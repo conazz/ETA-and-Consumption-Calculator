@@ -530,8 +530,16 @@
   }
   .collapse-btn:hover{ color:var(--text); }
   .collapse-btn:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; border-radius:4px; }
-  .collapse-btn svg{ width:16px; height:16px; transition:transform .15s; }
-  .collapse-btn.collapsed svg{ transform:rotate(-90deg); }
+  /* A gentle continuous bounce (rather than a static icon) is what makes this
+     read as "tap me" instead of just a decoration — direction of the bounce
+     stays the same in both states, only the base rotation differs.
+     prefers-reduced-motion (declared near the top of this stylesheet)
+     already neutralizes all animation-duration globally, so this is skipped
+     automatically for anyone who has that preference set. */
+  @keyframes collapseBtnBounceDown{ 0%, 100%{ transform:translateY(0); } 50%{ transform:translateY(3px); } }
+  @keyframes collapseBtnBounceRight{ 0%, 100%{ transform:rotate(-90deg) translateY(0); } 50%{ transform:rotate(-90deg) translateY(3px); } }
+  .collapse-btn svg{ width:16px; height:16px; animation:collapseBtnBounceDown 1.6s ease-in-out infinite; }
+  .collapse-btn.collapsed svg{ animation:collapseBtnBounceRight 1.6s ease-in-out infinite; }
   table.var-table{ width:100%; border-collapse:collapse; font-family:var(--font-mono); font-size:12.5px; }
   .var-table th{
     text-align:left; font-family:var(--font-body); font-weight:600; font-size:10.5px;
@@ -553,10 +561,10 @@
   }
   /* Switches which arrival port's speed-range table is shown (ETA tab) — only
      rendered when at least one alternative arrival port exists. */
-  .port-switch{ display:flex; flex-wrap:wrap; gap:6px; margin:-2px 0 12px; }
+  .port-switch{ display:flex; flex-wrap:wrap; justify-content:center; gap:8px; margin:-2px 0 12px; }
   .port-switch-btn{
-    font-family:var(--font-body); font-size:11.5px; font-weight:600;
-    padding:5px 10px; border-radius:999px;
+    font-family:var(--font-body); font-size:13px; font-weight:600;
+    padding:8px 16px; border-radius:999px;
     border:1px solid var(--border); background:var(--surface2); color:var(--text-dim);
     cursor:pointer;
   }
