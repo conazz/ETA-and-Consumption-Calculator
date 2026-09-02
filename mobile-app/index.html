@@ -778,7 +778,7 @@
 
     <!-- RESULTS -->
     <section class="card card--result" id="resultCard">
-      <p class="nameplate">Estimated Time of Arrival <span class="rivet"></span></p>
+      <p class="nameplate"><span id="etaCardTitle">Estimated Time of Arrival</span> <span class="rivet"></span></p>
       <div id="resultBody"></div>
     </section>
 
@@ -2354,27 +2354,66 @@
   const bbValueUtc = document.getElementById("bbValueUtc");
   const bbLabel = document.getElementById("bbLabel");
   const reqResultEl = document.getElementById("reqResult");
+  const etaCardTitle = document.getElementById("etaCardTitle");
   let lastEtaBBText = "— enter voyage details —";
   let lastEtaBBUtcText = "";
+  let lastEtaBBPortLabel = "";
+
+  function wirePortSwitchButtons(){
+    resultBody.querySelectorAll(".port-switch-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        state.etaSpeedRangePort = btn.dataset.portSwitch;
+        saveState();
+        renderResult();
+      });
+    });
+  }
 
   function renderResult(){
-    const calc = primaryETA();
+    // Self-heal a stale/deleted port selection, then figure out which port
+    // the whole card — main ETA figure, bottom bar, and the speed-range
+    // table below — is currently focused on. The switcher (built below) is
+    // what changes this: picking a different port there updates everything
+    // in this card at once, not just the speed-range table.
+    const validPortIds = ["primary"].concat(state.altArrivals.map(a => a.id));
+    if(!validPortIds.includes(state.etaSpeedRangePort)) state.etaSpeedRangePort = "primary";
+    const focusAlt = state.etaSpeedRangePort!=="primary"
+      ? state.altArrivals.find(a => a.id === state.etaSpeedRangePort) : null;
+    const calc = focusAlt ? calcETAFor(focusAlt.distance, focusAlt.speed) : primaryETA();
+    const focusArrZI = getZoneInfo(focusAlt ? focusAlt.arr : state.arr);
+    const focusPortLabel = focusArrZI ? focusArrZI.label : "arrival not set";
+    etaCardTitle.textContent = "Estimated Time of Arrival — "+focusPortLabel;
+    lastEtaBBPortLabel = focusPortLabel;
+
+    let switchHtml = "";
+    if(state.altArrivals.length){
+      switchHtml = '<div class="port-switch">'+
+        '<button type="button" class="port-switch-btn'+(!focusAlt?" active":"")+'" data-port-switch="primary">Primary</button>'+
+        state.altArrivals.map((a,i) => '<button type="button" class="port-switch-btn'+(state.etaSpeedRangePort===a.id?" active":"")+'" data-port-switch="'+a.id+'">Alt '+(i+1)+'</button>').join("")+
+      '</div>';
+    }
+
     if(!calc){
-      resultBody.innerHTML = '<p class="result-empty">Enter a departure location &amp; time, distance to go and speed to see the ETA.</p>';
+      // Keep the switcher visible even when the focused port's own data is
+      // incomplete, so switching to a working port is always possible.
+      resultBody.innerHTML = switchHtml +
+        '<p class="result-empty"'+(switchHtml?' style="margin-top:12px;"':'')+'>'+
+        (focusAlt ? "Enter this port&rsquo;s distance and speed to see its ETA."
+                  : "Enter a departure location &amp; time, distance to go and speed to see the ETA.")+
+        '</p>';
       lastEtaBBText = "— enter voyage details —";
       lastEtaBBUtcText = "";
+      wirePortSwitchButtons();
       updateBottomBar();
       return;
     }
-    const arrZI = getZoneInfo(state.arr);
-    const etaArr = arrZI ? calc.etaUTC.setZone(arrZI.zone) : null;
-    const etaDep = calc.etaUTC.setZone(calc.dep.zoneInfo.zone);
+    const etaArr = focusArrZI ? calc.etaUTC.setZone(focusArrZI.zone) : null;
 
     let html = "";
     if(etaArr){
       html += '<div class="result-eta-label">Arrival local time</div>';
       html += '<div class="result-eta-date">'+etaArr.toFormat("dd LLL yyyy")+'</div>';
-      html += '<div class="result-eta-time">'+etaArr.toFormat("HH:mm")+' <span>&middot; '+zoneOffsetLabel(arrZI, calc.etaUTC)+'</span></div>';
+      html += '<div class="result-eta-time">'+etaArr.toFormat("HH:mm")+' <span>&middot; '+zoneOffsetLabel(focusArrZI, calc.etaUTC)+'</span></div>';
       html += '<div class="result-eta-utc">UTC: '+calc.etaUTC.toFormat("dd LLL, HH:mm")+'</div>';
       lastEtaBBText = etaArr.toFormat("dd LLL, HH:mm")+" LT";
       lastEtaBBUtcText = "UTC "+calc.etaUTC.toFormat("dd LLL, HH:mm");
@@ -2398,66 +2437,34 @@
       '<div><span>Arrival UTC</span><b>'+calc.etaUTC.toFormat("dd LLL HH:mm")+'</b></div>'+
     '</div>';
 
-    // "ETA across speed range" is a distinct, switchable view — it always
-    // starts on the primary arrival, but if alternative ports exist the user
-    // can flip it to explore any of them instead. Whether the section shows
-    // at all is still gated on the primary calc/variance (unchanged from
-    // before); which port's numbers actually fill the table is separate.
-    const primaryRows = speedTable(calc);
-    if(primaryRows.length){
-      const validSpeedRangeIds = ["primary"].concat(state.altArrivals.map(a => a.id));
-      if(!validSpeedRangeIds.includes(state.etaSpeedRangePort)) state.etaSpeedRangePort = "primary";
-
-      const speedRangeAlt = state.etaSpeedRangePort!=="primary"
-        ? state.altArrivals.find(a => a.id === state.etaSpeedRangePort) : null;
-      const speedRangeCalc = speedRangeAlt ? calcETAFor(speedRangeAlt.distance, speedRangeAlt.speed) : calc;
-      const speedRangeArrZI = speedRangeAlt ? getZoneInfo(speedRangeAlt.arr) : arrZI;
-      const speedRangeRows = speedRangeCalc ? speedTable(speedRangeCalc) : [];
-      const speedTableTitle = "ETA Across Speed Range — "+(speedRangeArrZI ? speedRangeArrZI.label : "arrival not set");
-
-      let switchHtml = "";
-      if(state.altArrivals.length){
-        switchHtml = '<div class="port-switch">'+
-          '<button type="button" class="port-switch-btn'+(!speedRangeAlt?" active":"")+'" data-port-switch="primary">Primary</button>'+
-          state.altArrivals.map((a,i) => '<button type="button" class="port-switch-btn'+(state.etaSpeedRangePort===a.id?" active":"")+'" data-port-switch="'+a.id+'">Alt '+(i+1)+'</button>').join("")+
-        '</div>';
-      }
-
-      html += '<div class="var-wrap"><h3>'+escHtml(speedTableTitle)+'</h3>'+switchHtml;
-      if(speedRangeRows.length){
-        html += '<div style="overflow-x:auto;"><table class="var-table"><thead><tr><th>Speed</th><th>Passage</th><th>ETA '+(speedRangeArrZI?"(Arrival LT)":"(UTC)")+'</th></tr></thead><tbody id="varTbody"></tbody></table></div>';
-      } else {
-        html += '<p class="result-empty">Enter this port&rsquo;s distance and speed to see its speed range.</p>';
-      }
-      html += '</div>';
+    const rows = speedTable(calc);
+    if(rows.length){
+      const speedTableTitle = "ETA Across Speed Range — "+focusPortLabel;
+      html += '<div class="var-wrap"><h3>'+escHtml(speedTableTitle)+'</h3>'+switchHtml+
+        '<div style="overflow-x:auto;"><table class="var-table"><thead><tr><th>Speed</th><th>Passage</th><th>ETA '+(focusArrZI?"(Arrival LT)":"(UTC)")+'</th></tr></thead><tbody id="varTbody"></tbody></table></div></div>';
       resultBody.innerHTML = html;
-
       const tbody = resultBody.querySelector("#varTbody");
-      if(tbody){
-        speedRangeRows.forEach(r => {
-          const tr = document.createElement("tr");
-          if(r.planned) tr.className = "planned";
-          const h = speedRangeCalc.distance/r.speed;
-          const shown = speedRangeArrZI ? r.etaUTC.setZone(speedRangeArrZI.zone) : r.etaUTC;
-          // Only add the secondary UTC line when the main value shown is
-          // already local time — if there's no arrival zone, "shown" IS UTC.
-          const utcSub = speedRangeArrZI ? '<div class="cell-sub">'+r.etaUTC.toFormat("dd LLL, HH:mm")+' UTC</div>' : '';
-          tr.innerHTML = '<td>'+r.speed.toFixed(1)+' kn'+(r.planned?'<span class="chip">PLANNED</span>':'')+'</td>'+
-            '<td>'+fmtDuration(h)+'</td>'+
-            '<td>'+shown.toFormat("dd LLL, HH:mm")+utcSub+'</td>';
-          tbody.appendChild(tr);
-        });
-      }
-      resultBody.querySelectorAll(".port-switch-btn").forEach(btn => {
-        btn.addEventListener("click", () => {
-          state.etaSpeedRangePort = btn.dataset.portSwitch;
-          saveState();
-          renderResult();
-        });
+      rows.forEach(r => {
+        const tr = document.createElement("tr");
+        if(r.planned) tr.className = "planned";
+        const h = calc.distance/r.speed;
+        const shown = focusArrZI ? r.etaUTC.setZone(focusArrZI.zone) : r.etaUTC;
+        // Only add the secondary UTC line when the main value shown is
+        // already local time — if there's no arrival zone, "shown" IS UTC.
+        const utcSub = focusArrZI ? '<div class="cell-sub">'+r.etaUTC.toFormat("dd LLL, HH:mm")+' UTC</div>' : '';
+        tr.innerHTML = '<td>'+r.speed.toFixed(1)+' kn'+(r.planned?'<span class="chip">PLANNED</span>':'')+'</td>'+
+          '<td>'+fmtDuration(h)+'</td>'+
+          '<td>'+shown.toFormat("dd LLL, HH:mm")+utcSub+'</td>';
+        tbody.appendChild(tr);
       });
     } else {
+      // No variance configured, so there's no table — still show the
+      // switcher (at the bottom, same spot it'd otherwise occupy) so port
+      // switching keeps working even with the speed-range feature off.
+      if(switchHtml) html += '<div style="margin-top:16px; padding-top:14px; border-top:1px dashed var(--border);">'+switchHtml+'</div>';
       resultBody.innerHTML = html;
     }
+    wirePortSwitchButtons();
     updateBottomBar();
   }
 
@@ -2799,8 +2806,12 @@
     } else {
       bbLabel.textContent = "ETA";
       bbValue.textContent = lastEtaBBText;
-      bbValueUtc.textContent = lastEtaBBUtcText;
-      bbValueUtc.hidden = !lastEtaBBUtcText;
+      // Combine the port name and (if shown separately above) UTC time into
+      // one compact secondary line, so switching ports in the ETA card is
+      // reflected here too without needing a third line.
+      const bbSecondary = [lastEtaBBPortLabel, lastEtaBBUtcText].filter(Boolean).join(" · ");
+      bbValueUtc.textContent = bbSecondary;
+      bbValueUtc.hidden = !bbSecondary;
       bottomBarEl.setAttribute("aria-label", "Jump to ETA");
     }
   }
