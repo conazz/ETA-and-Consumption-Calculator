@@ -506,12 +506,20 @@
     text-transform:uppercase; color:var(--text-dim); margin-bottom:3px;
   }
   .consum-legrate-item input{ width:100%; padding:7px 8px; font-size:12.5px; }
+  .consum-legrates-heading{
+    font-size:10.5px; font-weight:600; letter-spacing:0.06em; text-transform:uppercase;
+    color:var(--accent); margin:10px 0 2px;
+  }
+  .consum-legrates-heading:first-of-type{ margin-top:8px; }
 
   /* Route Legs card (By Region mode) */
   .route-leg{ padding:10px 0; border-top:1px dashed var(--border); }
   .route-leg:first-child{ padding-top:0; border-top:none; }
-  .route-leg-head{ display:flex; align-items:center; gap:8px; margin-bottom:8px; }
-  .route-leg-head input{ flex:1; padding:7px 8px; font-size:12.5px; font-weight:600; }
+  .route-leg-head{ display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px; }
+  .route-leg-ordinal{
+    font-family:var(--font-display); font-weight:600; font-size:12px;
+    letter-spacing:0.08em; text-transform:uppercase; color:var(--accent);
+  }
   .consum-result{
     margin-top:8px; display:flex; align-items:center; justify-content:space-between; gap:8px;
     font-family:var(--font-mono); font-variant-numeric:tabular-nums; font-size:12.5px; color:var(--text-dim);
@@ -887,7 +895,9 @@
             <input type="number" id="fwProd" inputmode="decimal" min="0" step="any" placeholder="0.0">
           </div>
         </div>
+        <p class="consum-legrates-heading" id="fwConsLegRatesHeading" hidden>Consumption</p>
         <div class="consum-legrates" id="fwConsLegRates" hidden></div>
+        <p class="consum-legrates-heading" id="fwProdLegRatesHeading" hidden>Production</p>
         <div class="consum-legrates" id="fwProdLegRates" hidden></div>
         <div class="consum-result"><span id="fwResultText">—</span><span class="consum-chip pending" id="fwChip">—</span></div>
         <div class="req-note danger" id="fwWarning" hidden></div>
@@ -935,7 +945,15 @@
 
     <!-- PROJECTED ROB SUMMARY (By Region mode only — replaces ROB Across Speed Range) -->
     <section class="card card--result" id="regionRobSummaryCard" hidden>
-      <p class="nameplate">Projected ROB Summary <span class="rivet"></span></p>
+      <p class="nameplate">
+        <span class="nameplate-title-row">
+          <span>Projected ROB Summary</span>
+          <button type="button" class="collapse-btn" id="regionRobRangeToggle" aria-expanded="true" aria-label="Toggle Projected ROB Summary">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg>
+          </button>
+        </span>
+        <span class="rivet"></span>
+      </p>
       <div id="regionRobSummaryBody"></div>
     </section>
 
@@ -1799,6 +1817,7 @@
     etaSpeedRangePort: "primary",
     etaSpeedRangeCollapsed: false,
     robSpeedRangeCollapsed: false,
+    regionRobSummaryCollapsed: false,
     consumptionMode: "straight",
     routeLegs: []
   };
@@ -2753,6 +2772,11 @@
     if(!isFinite(n)) return "—";
     return n.toLocaleString(undefined, {minimumFractionDigits:1, maximumFractionDigits:1});
   }
+  // "1st", "2nd", "3rd", "4th", "11th"... — used to label route legs positionally.
+  function ordinal(n){
+    const s = ["th","st","nd","rd"], v = n%100;
+    return n+(s[(v-20)%10] || s[v] || s[0]);
+  }
   // burnRate: net daily depletion (perDay for fuel/lube; consumption-production for FW).
   function consumableStatus(projected, burnRate){
     if(projected==null) return "pending";
@@ -2887,7 +2911,7 @@
           const wrap = document.createElement("div");
           wrap.className = "consum-legrate-item";
           wrap.innerHTML = '<label></label><input type="number" inputmode="decimal" min="0" step="any" placeholder="0.0">';
-          wrap.querySelector("label").textContent = "Leg "+(i+1)+" /day";
+          wrap.querySelector("label").textContent = "Leg "+(i+1)+" Cons/day";
           const input = wrap.querySelector("input");
           input.value = leg[rateMapKey][item.id] || "";
           input.addEventListener("input", () => {
@@ -2981,13 +3005,16 @@
   // the number of legs changes (or mode toggles), not on every keystroke;
   // editing a value just updates state + calls refreshFreshWater() directly.
   function renderFreshWaterLegRates(){
-    [["fwCons", fwConsLegRates], ["fwProd", fwProdLegRates]].forEach(([field, container]) => {
+    // "fwCons"/"fwProd" each get their own clearly-labeled set of per-leg
+    // inputs — Cons/day and Prod/day are easy to mix up otherwise, since the
+    // two blocks otherwise look identical.
+    [["fwCons", fwConsLegRates, "Cons/day"], ["fwProd", fwProdLegRates, "Prod/day"]].forEach(([field, container, suffix]) => {
       container.innerHTML = "";
       state.routeLegs.forEach((leg, i) => {
         const wrap = document.createElement("div");
         wrap.className = "consum-legrate-item";
         wrap.innerHTML = '<label></label><input type="number" inputmode="decimal" min="0" step="any" placeholder="0.0">';
-        wrap.querySelector("label").textContent = "Leg "+(i+1)+" /day";
+        wrap.querySelector("label").textContent = "Leg "+(i+1)+" "+suffix;
         const input = wrap.querySelector("input");
         input.value = leg[field] || "";
         input.addEventListener("input", () => {
@@ -3082,6 +3109,21 @@
     saveState();
     applyRobRangeCollapsedState();
   });
+
+  // Projected ROB Summary (By Region mode) — same collapsible pattern.
+  const regionRobRangeToggle = document.getElementById("regionRobRangeToggle");
+  const regionRobSummaryBodyEl = document.getElementById("regionRobSummaryBody");
+  function applyRegionRobRangeCollapsedState(){
+    const collapsed = !!state.regionRobSummaryCollapsed;
+    regionRobSummaryBodyEl.hidden = collapsed;
+    regionRobRangeToggle.classList.toggle("collapsed", collapsed);
+    regionRobRangeToggle.setAttribute("aria-expanded", String(!collapsed));
+  }
+  regionRobRangeToggle.addEventListener("click", () => {
+    state.regionRobSummaryCollapsed = !state.regionRobSummaryCollapsed;
+    saveState();
+    applyRegionRobRangeCollapsedState();
+  });
   function renderConsumInfo(){
     renderRobSummaryTitle();
     const el = document.getElementById("consumInfo");
@@ -3112,30 +3154,46 @@
 
   function renderRouteLegs(){
     routeLegsListEl.innerHTML = "";
-    state.routeLegs.forEach(leg => {
+    state.routeLegs.forEach((leg, i) => {
       const row = document.createElement("div");
       row.className = "route-leg";
       row.innerHTML =
         '<div class="route-leg-head">'+
-          '<input type="text" class="leg-label" placeholder="e.g. Non-ECA transit / ECA zone">'+
+          '<span class="route-leg-ordinal"></span>'+
           '<button type="button" class="consum-del" aria-label="Remove leg">'+TRASH_SVG+'</button>'+
         '</div>'+
-        '<div class="field-row">'+
+        '<div class="field"><label>Leg name (optional)</label><input type="text" class="leg-label" placeholder="e.g. Non-ECA transit / ECA zone"></div>'+
+        '<div class="field-row" style="margin-top:10px;">'+
           '<div class="field"><label>Distance (nm)</label><input type="number" class="leg-distance" inputmode="decimal" min="0" step="any" placeholder="0.0"></div>'+
           '<div class="field"><label>Speed override (kn)</label><input type="number" class="leg-speed" inputmode="decimal" min="0" step="any" placeholder="'+(parseFloat(state.speed)||0).toFixed(1)+'"></div>'+
-        '</div>';
+        '</div>'+
+        '<p class="req-note" style="margin-top:6px;"></p>';
+      row.querySelector(".route-leg-ordinal").textContent = ordinal(i+1)+" Leg";
       const labelEl = row.querySelector(".leg-label");
       const distEl = row.querySelector(".leg-distance");
       const speedEl = row.querySelector(".leg-speed");
       labelEl.value = leg.label;
       distEl.value = leg.distance;
       speedEl.value = leg.speedOverride;
+      // The distance cap/hint (below) is (re)applied by updateLegTotalNote(),
+      // which always runs right after this function whenever legs are
+      // rendered/changed — no need to duplicate that logic here too.
       // Editing an existing leg's own fields never needs to rebuild the leg
       // list (or anything else) — only the leg COUNT changing does (see
       // rebuildForLegChange() below), so typing here can't lose focus the
       // way the ETA tab's variance/interval fields once did.
       labelEl.addEventListener("input", () => { leg.label = labelEl.value; saveState(); });
-      distEl.addEventListener("input", () => { leg.distance = distEl.value; saveState(); refreshAllConsumption(); updateLegTotalNote(); });
+      distEl.addEventListener("input", () => {
+        const maxDist = parseFloat(state.distance);
+        let val = parseFloat(distEl.value);
+        if(isFinite(maxDist) && maxDist>0 && isFinite(val) && val>maxDist){
+          distEl.value = maxDist;
+        }
+        leg.distance = distEl.value;
+        saveState();
+        refreshAllConsumption();
+        updateLegTotalNote();
+      });
       speedEl.addEventListener("input", () => { leg.speedOverride = speedEl.value; saveState(); refreshAllConsumption(); });
       row.querySelector(".consum-del").addEventListener("click", () => {
         state.routeLegs = state.routeLegs.filter(l => l.id !== leg.id);
@@ -3168,7 +3226,27 @@
 
   // Subtle cross-check on the ETA tab — not a hard block, just a heads-up
   // when the leg breakdown doesn't add up to the primary "Distance to go".
+  // Applies the "can't exceed the ETA tab's total distance" cap/hint to every
+  // currently-rendered leg row. Centralized here (rather than duplicated in
+  // renderRouteLegs()) since this always needs to re-run whenever
+  // state.distance changes too, not just when legs are added/removed.
+  function updateLegDistanceCaps(){
+    const maxDist = parseFloat(state.distance);
+    document.querySelectorAll("#routeLegsList .route-leg").forEach(row => {
+      const distEl = row.querySelector(".leg-distance");
+      const hintEl = row.querySelector(".req-note");
+      if(isFinite(maxDist) && maxDist>0){
+        distEl.max = maxDist;
+        hintEl.hidden = false;
+        hintEl.textContent = "Max "+maxDist.toLocaleString()+" nm (ETA tab's Distance to go)";
+      } else {
+        distEl.removeAttribute("max");
+        hintEl.hidden = true;
+      }
+    });
+  }
   function updateLegTotalNote(){
+    updateLegDistanceCaps();
     if(state.consumptionMode!=="region" || !state.routeLegs.length){ legTotalNote.hidden = true; return; }
     let total = 0, any = false;
     state.routeLegs.forEach(leg => { const d = parseFloat(leg.distance); if(isFinite(d)){ total += d; any = true; } });
@@ -3195,6 +3273,8 @@
     fwProdField.hidden = isRegion;
     fwConsLegRates.hidden = !isRegion;
     fwProdLegRates.hidden = !isRegion;
+    document.getElementById("fwConsLegRatesHeading").hidden = !isRegion;
+    document.getElementById("fwProdLegRatesHeading").hidden = !isRegion;
     updateLegTotalNote();
   }
 
@@ -3677,6 +3757,7 @@
     reqToggle.checked = state.reqEnabled; reqBody.hidden = !state.reqEnabled;
     reqDateEl.value = state.reqDate; reqTimeEl.value = state.reqTime; reqZoneEl.value = state.reqZone;
     applyRobRangeCollapsedState();
+    applyRegionRobRangeCollapsedState();
     renderLocationBlock(depLocEl, state.dep, () => { saveState(); render(); });
     renderLocationBlock(arrLocEl, state.arr, () => { saveState(); populateRobRefOptions(); render(); });
     renderAltArrivals();
