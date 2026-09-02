@@ -492,6 +492,26 @@
   .consum-del:hover{ color:var(--danger); }
   .consum-del:focus-visible{ outline:2px solid var(--accent); outline-offset:1px; }
   .consum-del svg{ width:15px; height:15px; }
+
+  /* By Region mode: per-leg rate mini-inputs, shown under a consumable row's
+     main line instead of a single "Per day" figure. */
+  /* display on :not([hidden]) — #fwConsLegRates/#fwProdLegRates are toggled
+     via the hidden attribute; an unconditional `display` here would defeat
+     that (see the .sheet-overlay note further down for why). */
+  .consum-legrates{ flex-wrap:wrap; gap:8px; margin-top:8px; }
+  .consum-legrates:not([hidden]){ display:flex; }
+  .consum-legrate-item{ flex:1; min-width:88px; }
+  .consum-legrate-item label{
+    display:block; font-size:9.5px; font-weight:600; letter-spacing:0.05em;
+    text-transform:uppercase; color:var(--text-dim); margin-bottom:3px;
+  }
+  .consum-legrate-item input{ width:100%; padding:7px 8px; font-size:12.5px; }
+
+  /* Route Legs card (By Region mode) */
+  .route-leg{ padding:10px 0; border-top:1px dashed var(--border); }
+  .route-leg:first-child{ padding-top:0; border-top:none; }
+  .route-leg-head{ display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+  .route-leg-head input{ flex:1; padding:7px 8px; font-size:12.5px; font-weight:600; }
   .consum-result{
     margin-top:8px; display:flex; align-items:center; justify-content:space-between; gap:8px;
     font-family:var(--font-mono); font-variant-numeric:tabular-nums; font-size:12.5px; color:var(--text-dim);
@@ -747,6 +767,7 @@
             <input type="number" id="speed" inputmode="decimal" min="0" step="any" placeholder="0.0">
           </div>
         </div>
+        <p class="req-note" id="legTotalNote" hidden></p>
       </div>
     </section>
 
@@ -808,12 +829,26 @@
     <div class="split-grid">
     <div class="split-col-main">
 
+    <!-- Straight (default, existing behavior) vs By Region (per-leg) projection -->
+    <div class="loc-tabs" id="consumModeTabs">
+      <button type="button" class="loc-tab" data-mode="straight">Straight</button>
+      <button type="button" class="loc-tab" data-mode="region">By Region</button>
+    </div>
+
     <div class="consum-info" id="consumInfo"></div>
 
     <div class="field" id="robRefWrap" hidden>
       <label for="robRefSelect">ROB reference arrival</label>
       <select id="robRefSelect"></select>
     </div>
+
+    <!-- ROUTE LEGS (By Region mode only) -->
+    <section class="card" id="routeLegsCard" hidden>
+      <p class="nameplate">Route Legs <span class="rivet"></span></p>
+      <p class="req-note" style="margin-top:-6px;">Breaks the voyage into segments (e.g. across an ECA boundary) — each with its own distance, and its own speed if it differs from the ETA tab's planned speed.</p>
+      <div id="routeLegsList"></div>
+      <button type="button" class="link-btn" id="addLegBtn" style="margin-top:6px;">+ Add leg</button>
+    </section>
 
     <div class="consum-grid">
 
@@ -843,15 +878,17 @@
             <label for="fwRob" id="fwRobLabel">ROB</label>
             <input type="number" id="fwRob" inputmode="decimal" min="0" step="any" placeholder="0.0">
           </div>
-          <div class="field">
+          <div class="field" id="fwConsField">
             <label for="fwCons" id="fwConsLabel">Cons. / day</label>
             <input type="number" id="fwCons" inputmode="decimal" min="0" step="any" placeholder="0.0">
           </div>
-          <div class="field">
+          <div class="field" id="fwProdField">
             <label for="fwProd" id="fwProdLabel">Prod. / day</label>
             <input type="number" id="fwProd" inputmode="decimal" min="0" step="any" placeholder="0.0">
           </div>
         </div>
+        <div class="consum-legrates" id="fwConsLegRates" hidden></div>
+        <div class="consum-legrates" id="fwProdLegRates" hidden></div>
         <div class="consum-result"><span id="fwResultText">—</span><span class="consum-chip pending" id="fwChip">—</span></div>
         <div class="req-note danger" id="fwWarning" hidden></div>
       </div>
@@ -894,6 +931,12 @@
         <div id="fwSpeedSummary"></div>
         <div id="lubeSpeedSummary"></div>
       </div>
+    </section>
+
+    <!-- PROJECTED ROB SUMMARY (By Region mode only — replaces ROB Across Speed Range) -->
+    <section class="card card--result" id="regionRobSummaryCard" hidden>
+      <p class="nameplate">Projected ROB Summary <span class="rivet"></span></p>
+      <div id="regionRobSummaryBody"></div>
     </section>
 
     </div>
@@ -1735,6 +1778,14 @@
   // edits this port's speed directly.
   const defaultAltArrival = () => ({id: newItemId(), arr: defaultLoc(), distance: "", speed: state.speed, speedLinked: true});
 
+  // A "By Region" route leg — an independent segment of the voyage (e.g. an
+  // ECA zone) with its own distance and, optionally, its own speed (falls
+  // back to the primary planned speed when blank). fuelRates/lubeRates are
+  // maps keyed by the matching state.consumption.fuels/lubeOils item id, so
+  // multiple fuel types can each have their own nonzero rate on the same leg
+  // (main engine + gensets running different grades simultaneously).
+  const defaultRouteLeg = (label) => ({id: newItemId(), label: label||"", distance:"", speedOverride:"", fuelRates:{}, lubeRates:{}, fwCons:"", fwProd:""});
+
   let state = {
     theme: "system",
     dateStr: "", timeStr: "",
@@ -1747,7 +1798,9 @@
     robReferencePort: "primary",
     etaSpeedRangePort: "primary",
     etaSpeedRangeCollapsed: false,
-    robSpeedRangeCollapsed: false
+    robSpeedRangeCollapsed: false,
+    consumptionMode: "straight",
+    routeLegs: []
   };
 
   const STORE_KEY = "bridge-eta-state-v1";
@@ -1772,6 +1825,35 @@
       };
     }) : [];
   }
+  // Keeps every leg's fuelRates/lubeRates in sync with the current fuel/lube
+  // type lists — adds a "" entry for any type a leg doesn't have a key for
+  // yet, and drops keys for types that no longer exist. Called after every
+  // fuel/lube type add or delete, and once from normalizeRouteLegs() below.
+  function syncLegRateKeys(legs){
+    (legs || state.routeLegs).forEach(leg => {
+      state.consumption.fuels.forEach(f => { if(!(f.id in leg.fuelRates)) leg.fuelRates[f.id] = ""; });
+      Object.keys(leg.fuelRates).forEach(k => { if(!state.consumption.fuels.some(f => f.id===k)) delete leg.fuelRates[k]; });
+      state.consumption.lubeOils.forEach(o => { if(!(o.id in leg.lubeRates)) leg.lubeRates[o.id] = ""; });
+      Object.keys(leg.lubeRates).forEach(k => { if(!state.consumption.lubeOils.some(o => o.id===k)) delete leg.lubeRates[k]; });
+    });
+  }
+  // Re-validates/defaults a saved (or history-restored) routeLegs array —
+  // mirrors normalizeAltArrivals() above. Must run after state.consumption is
+  // already set, since it backfills rate keys from the current fuel/lube lists.
+  function normalizeRouteLegs(rawArr){
+    const legs = Array.isArray(rawArr) ? rawArr.map(l => ({
+      id: l.id || newItemId(),
+      label: l.label || "",
+      distance: l.distance || "",
+      speedOverride: l.speedOverride || "",
+      fuelRates: (l.fuelRates && typeof l.fuelRates === "object") ? Object.assign({}, l.fuelRates) : {},
+      lubeRates: (l.lubeRates && typeof l.lubeRates === "object") ? Object.assign({}, l.lubeRates) : {},
+      fwCons: l.fwCons || "",
+      fwProd: l.fwProd || ""
+    })) : [];
+    syncLegRateKeys(legs);
+    return legs;
+  }
   function loadState(){
     try{
       const raw = localStorage.getItem(STORE_KEY);
@@ -1785,6 +1867,7 @@
       state.altArrivals = normalizeAltArrivals(parsed.altArrivals, state.speed);
       state.robReferencePort = parsed.robReferencePort || "primary";
       state.etaSpeedRangePort = parsed.etaSpeedRangePort || "primary";
+      state.consumptionMode = parsed.consumptionMode === "region" ? "region" : "straight";
       const pc = parsed.consumption || {};
       state.consumption = {
         fuels: Array.isArray(pc.fuels) ? pc.fuels : defaultFuels(),
@@ -1792,6 +1875,7 @@
         lubeOils: Array.isArray(pc.lubeOils) ? pc.lubeOils : defaultLubeOils(),
         units: Object.assign({fuels:"MT", lubeOils:"L"}, pc.units||{})
       };
+      state.routeLegs = normalizeRouteLegs(parsed.routeLegs);
     }catch(e){}
   }
 
@@ -2630,6 +2714,41 @@
     const calc = getReferenceCalc();
     return calc ? calc.hours/24 : null;
   }
+
+  // ---- "By Region" mode: per-leg time/consumption math (additive — none of
+  // the Straight-mode functions above are touched by this). ----
+  // Hours for one leg: its own distance over its own speed override, or the
+  // ETA tab's planned speed when no override is given. null if incomplete.
+  function regionLegHours(leg){
+    const distance = parseFloat(leg.distance);
+    const speed = parseFloat(leg.speedOverride) || parseFloat(state.speed);
+    if(!isFinite(distance) || distance<=0 || !isFinite(speed) || speed<=0) return null;
+    return distance/speed;
+  }
+  // Total voyage time (days) from summed leg hours — null only when NO leg is
+  // complete enough to compute yet (progressive: legs can be filled in one at
+  // a time and partial totals still show, same philosophy as the rest of the app).
+  function regionTotalHours(){
+    let total = 0, any = false;
+    state.routeLegs.forEach(leg => {
+      const h = regionLegHours(leg);
+      if(h!=null){ total += h; any = true; }
+    });
+    return any ? total : null;
+  }
+  // Total amount used (or produced, for FW) across every leg for one
+  // consumable type: rateGetter(leg) returns that leg's rate for this type.
+  // Legs with no distance/speed yet simply contribute 0, same reasoning.
+  function regionTotalUsed(rateGetter){
+    let total = 0;
+    state.routeLegs.forEach(leg => {
+      const h = regionLegHours(leg);
+      if(h==null) return;
+      const rate = parseFloat(rateGetter(leg));
+      if(isFinite(rate)) total += (h/24)*rate;
+    });
+    return total;
+  }
   function fmtQty(n){
     if(!isFinite(n)) return "—";
     return n.toLocaleString(undefined, {minimumFractionDigits:1, maximumFractionDigits:1});
@@ -2649,6 +2768,7 @@
   // speed in the same planned-speed ± variance range, since a different speed
   // changes passage time (and so total consumption) even at the same daily rate.
   function speedRobTableHTML(robVal, dailyBurn, title, unit){
+    if(state.consumptionMode==="region") return ""; // replaced by Projected ROB Summary in this mode
     const calc = getReferenceCalc();
     if(!calc || !isFinite(robVal)) return "";
     const rows = speedTable(calc);
@@ -2672,6 +2792,7 @@
   // every item in that list as its own column — instead of a separate small
   // table per item, to match the ETA tab's single "ETA across speed range" table.
   function consumableSpeedSummaryHTML(listKey, title){
+    if(state.consumptionMode==="region") return ""; // replaced by Projected ROB Summary in this mode
     const calc = getReferenceCalc();
     if(!calc) return "";
     const rows = speedTable(calc);
@@ -2730,7 +2851,11 @@
     if(el) el.innerHTML = consumableSpeedSummaryHTML(listKey, SUMMARY_TITLE[listKey]);
   }
 
+  // fuels -> leg.fuelRates, lubeOils -> leg.lubeRates — same shape either way.
+  function legRateMapFor(listKey){ return listKey==="fuels" ? "fuelRates" : "lubeRates"; }
+
   function renderConsumableList(container, listKey){
+    const isRegion = state.consumptionMode === "region";
     container.innerHTML = "";
     consumRowRefreshers = consumRowRefreshers.filter(r => r.listKey !== listKey);
     state.consumption[listKey].forEach(item => {
@@ -2740,25 +2865,57 @@
         '<div class="consum-row-line">'+
           '<span class="name col-name"></span>'+
           '<input type="number" class="c-rob col-input" inputmode="decimal" min="0" step="any" placeholder="0.0">'+
-          '<input type="number" class="c-perday col-input" inputmode="decimal" min="0" step="any" placeholder="0.0">'+
+          (isRegion ? '<span class="col-input"></span>' : '<input type="number" class="c-perday col-input" inputmode="decimal" min="0" step="any" placeholder="0.0">')+
           '<span class="col-del">'+(item.removable ? '<button type="button" class="consum-del" aria-label="Remove">'+TRASH_SVG+'</button>' : '')+'</span>'+
         '</div>'+
+        (isRegion ? '<div class="consum-legrates"></div>' : '')+
         '<div class="consum-result"><span class="c-result-text">—</span><span class="consum-chip pending c-chip">—</span></div>'+
         '<div class="req-note danger c-warning" hidden></div>';
       row.querySelector(".name").textContent = item.name;
       const robEl = row.querySelector(".c-rob");
-      const perDayEl = row.querySelector(".c-perday");
+      const perDayEl = row.querySelector(".c-perday"); // null in region mode
       const resultText = row.querySelector(".c-result-text");
       const chip = row.querySelector(".c-chip");
       const warningEl = row.querySelector(".c-warning");
       robEl.value = item.rob;
-      perDayEl.value = item.perDay;
+      if(perDayEl) perDayEl.value = item.perDay;
+
+      const rateMapKey = legRateMapFor(listKey);
+      if(isRegion){
+        const legratesEl = row.querySelector(".consum-legrates");
+        state.routeLegs.forEach((leg, i) => {
+          const wrap = document.createElement("div");
+          wrap.className = "consum-legrate-item";
+          wrap.innerHTML = '<label></label><input type="number" inputmode="decimal" min="0" step="any" placeholder="0.0">';
+          wrap.querySelector("label").textContent = "Leg "+(i+1)+" /day";
+          const input = wrap.querySelector("input");
+          input.value = leg[rateMapKey][item.id] || "";
+          input.addEventListener("input", () => {
+            leg[rateMapKey][item.id] = input.value;
+            saveState();
+            refresh();
+          });
+          legratesEl.appendChild(wrap);
+        });
+      }
+
       function refresh(){
-        const days = daysToETA();
-        const rob = parseFloat(robEl.value), perDay = parseFloat(perDayEl.value);
-        let projected = null;
-        if(isFinite(rob) && isFinite(perDay) && days!=null) projected = rob - perDay*days;
-        const status = consumableStatus(projected, isFinite(perDay) ? perDay : 0);
+        let projected = null, burnRate = 0;
+        if(isRegion){
+          const rob = parseFloat(robEl.value);
+          const totalHours = regionTotalHours();
+          if(isFinite(rob) && totalHours!=null && state.routeLegs.length){
+            const used = regionTotalUsed(leg => leg[rateMapKey][item.id]);
+            projected = rob - used;
+            burnRate = totalHours>0 ? used/(totalHours/24) : 0;
+          }
+        } else {
+          const days = daysToETA();
+          const rob = parseFloat(robEl.value), perDay = parseFloat(perDayEl.value);
+          if(isFinite(rob) && isFinite(perDay) && days!=null) projected = rob - perDay*days;
+          burnRate = isFinite(perDay) ? perDay : 0;
+        }
+        const status = consumableStatus(projected, burnRate);
         resultText.textContent = projected==null ? "Enter ROB / per-day — complete ETA tab" : "Projected ROB at ETA: "+fmtQty(projected)+" "+unitFor(listKey);
         resultText.className = projected==null ? "c-result-text" : "c-result-text "+(projected<0 ? "danger-text" : "brass-text");
         chip.textContent = STATUS_LABEL[status];
@@ -2767,12 +2924,14 @@
         warningEl.textContent = "⚠ Not enough "+item.name+" — projected to run out before arrival";
         refreshListSummary(listKey);
         refreshRobBottomBar();
+        refreshRegionRobSummary();
       }
       robEl.addEventListener("input", () => { item.rob = robEl.value; saveState(); refresh(); });
-      perDayEl.addEventListener("input", () => { item.perDay = perDayEl.value; saveState(); refresh(); });
+      if(perDayEl) perDayEl.addEventListener("input", () => { item.perDay = perDayEl.value; saveState(); refresh(); });
       const delBtn = row.querySelector(".consum-del");
       if(delBtn) delBtn.addEventListener("click", () => {
         state.consumption[listKey] = state.consumption[listKey].filter(x => x.id !== item.id);
+        syncLegRateKeys();
         saveState();
         renderConsumableList(container, listKey);
       });
@@ -2782,6 +2941,7 @@
     });
     refreshListSummary(listKey);
     refreshRobBottomBar();
+    refreshRegionRobSummary();
   }
 
   function wireAddItemForm(toggleId, formId, nameInputId, cancelId, saveId, listKey, containerEl){
@@ -2799,6 +2959,7 @@
       const name = nameInput.value.trim();
       if(!name){ nameInput.focus(); return; }
       state.consumption[listKey].push({id:newItemId(), name, rob:"", perDay:"", removable:true});
+      syncLegRateKeys();
       saveState();
       form.hidden = true;
       renderConsumableList(containerEl, listKey);
@@ -2812,23 +2973,62 @@
   const fwChip = document.getElementById("fwChip");
   const fwSpeedSummary = document.getElementById("fwSpeedSummary");
   const fwWarning = document.getElementById("fwWarning");
+  const fwConsField = document.getElementById("fwConsField");
+  const fwProdField = document.getElementById("fwProdField");
+  const fwConsLegRates = document.getElementById("fwConsLegRates");
+  const fwProdLegRates = document.getElementById("fwProdLegRates");
+  // Rebuilds the per-leg Cons/day and Prod/day mini-inputs — only needed when
+  // the number of legs changes (or mode toggles), not on every keystroke;
+  // editing a value just updates state + calls refreshFreshWater() directly.
+  function renderFreshWaterLegRates(){
+    [["fwCons", fwConsLegRates], ["fwProd", fwProdLegRates]].forEach(([field, container]) => {
+      container.innerHTML = "";
+      state.routeLegs.forEach((leg, i) => {
+        const wrap = document.createElement("div");
+        wrap.className = "consum-legrate-item";
+        wrap.innerHTML = '<label></label><input type="number" inputmode="decimal" min="0" step="any" placeholder="0.0">';
+        wrap.querySelector("label").textContent = "Leg "+(i+1)+" /day";
+        const input = wrap.querySelector("input");
+        input.value = leg[field] || "";
+        input.addEventListener("input", () => {
+          leg[field] = input.value;
+          saveState();
+          refreshFreshWater();
+        });
+        container.appendChild(wrap);
+      });
+    });
+  }
   function refreshFreshWater(){
-    const days = daysToETA();
+    const isRegion = state.consumptionMode === "region";
     const rob = parseFloat(fwRob.value);
-    const cons = parseFloat(fwCons.value) || 0;
-    const prod = parseFloat(fwProd.value) || 0;
-    let projected = null;
-    if(isFinite(rob) && days!=null) projected = rob + (prod - cons)*days;
-    const status = consumableStatus(projected, cons - prod);
     const fwUnit = state.consumption.freshWater.unit;
+    let projected = null, burnRate = 0;
+    if(isRegion){
+      const totalHours = regionTotalHours();
+      if(isFinite(rob) && totalHours!=null && state.routeLegs.length){
+        const used = regionTotalUsed(leg => leg.fwCons);
+        const produced = regionTotalUsed(leg => leg.fwProd);
+        projected = rob + produced - used;
+        burnRate = totalHours>0 ? (used-produced)/(totalHours/24) : 0;
+      }
+    } else {
+      const days = daysToETA();
+      const cons = parseFloat(fwCons.value) || 0;
+      const prod = parseFloat(fwProd.value) || 0;
+      if(isFinite(rob) && days!=null) projected = rob + (prod - cons)*days;
+      burnRate = cons - prod;
+    }
+    const status = consumableStatus(projected, burnRate);
     fwResultText.textContent = projected==null ? "Enter ROB — complete ETA tab" : "Projected ROB at ETA: "+fmtQty(projected)+" "+fwUnit;
     fwResultText.className = projected==null ? "" : (projected<0 ? "danger-text" : "brass-text");
     fwChip.textContent = STATUS_LABEL[status];
     fwChip.className = "consum-chip "+status;
     fwWarning.hidden = !(projected!=null && projected<0);
     fwWarning.textContent = "⚠ Not enough fresh water — projected to run out before arrival";
-    fwSpeedSummary.innerHTML = isFinite(rob) ? speedRobTableHTML(rob, cons - prod, "Fresh Water", fwUnit) : "";
+    fwSpeedSummary.innerHTML = (!isRegion && isFinite(rob)) ? speedRobTableHTML(rob, (parseFloat(fwCons.value)||0) - (parseFloat(fwProd.value)||0), "Fresh Water", fwUnit) : "";
     refreshRobBottomBar();
+    refreshRegionRobSummary();
   }
   [fwRob, fwCons, fwProd].forEach(el => el.addEventListener("input", () => {
     state.consumption.freshWater.rob = fwRob.value;
@@ -2885,6 +3085,15 @@
   function renderConsumInfo(){
     renderRobSummaryTitle();
     const el = document.getElementById("consumInfo");
+    if(state.consumptionMode === "region"){
+      const totalHours = regionTotalHours();
+      if(totalHours==null || !state.routeLegs.length){
+        el.innerHTML = "Add route legs with a distance (and speed, if it differs from the ETA tab) to project consumption at arrival.";
+        return;
+      }
+      el.innerHTML = "<b class=\"text-brass\">By Region</b> &middot; Total transit time: <b>"+fmtDuration(totalHours)+"</b> &middot; "+(totalHours/24).toFixed(2)+" days across "+state.routeLegs.length+" leg"+(state.routeLegs.length>1?"s":"");
+      return;
+    }
     const calc = getReferenceCalc();
     if(!calc){
       el.innerHTML = "Complete the ETA tab (departure time, distance, speed) to project consumption at arrival.";
@@ -2895,28 +3104,213 @@
       "Passage time to ETA: <b>"+fmtDuration(calc.hours)+"</b> &middot; "+(calc.hours/24).toFixed(2)+" days at "+calc.speed.toFixed(1)+" kn";
   }
 
+  /* ---------------- By Region mode: legs, mode toggle, region ROB summary ---------------- */
+  const routeLegsCard = document.getElementById("routeLegsCard");
+  const routeLegsListEl = document.getElementById("routeLegsList");
+  const regionRobSummaryCard = document.getElementById("regionRobSummaryCard");
+  const legTotalNote = document.getElementById("legTotalNote");
+
+  function renderRouteLegs(){
+    routeLegsListEl.innerHTML = "";
+    state.routeLegs.forEach(leg => {
+      const row = document.createElement("div");
+      row.className = "route-leg";
+      row.innerHTML =
+        '<div class="route-leg-head">'+
+          '<input type="text" class="leg-label" placeholder="e.g. Non-ECA transit / ECA zone">'+
+          '<button type="button" class="consum-del" aria-label="Remove leg">'+TRASH_SVG+'</button>'+
+        '</div>'+
+        '<div class="field-row">'+
+          '<div class="field"><label>Distance (nm)</label><input type="number" class="leg-distance" inputmode="decimal" min="0" step="any" placeholder="0.0"></div>'+
+          '<div class="field"><label>Speed override (kn)</label><input type="number" class="leg-speed" inputmode="decimal" min="0" step="any" placeholder="'+(parseFloat(state.speed)||0).toFixed(1)+'"></div>'+
+        '</div>';
+      const labelEl = row.querySelector(".leg-label");
+      const distEl = row.querySelector(".leg-distance");
+      const speedEl = row.querySelector(".leg-speed");
+      labelEl.value = leg.label;
+      distEl.value = leg.distance;
+      speedEl.value = leg.speedOverride;
+      // Editing an existing leg's own fields never needs to rebuild the leg
+      // list (or anything else) — only the leg COUNT changing does (see
+      // rebuildForLegChange() below), so typing here can't lose focus the
+      // way the ETA tab's variance/interval fields once did.
+      labelEl.addEventListener("input", () => { leg.label = labelEl.value; saveState(); });
+      distEl.addEventListener("input", () => { leg.distance = distEl.value; saveState(); refreshAllConsumption(); updateLegTotalNote(); });
+      speedEl.addEventListener("input", () => { leg.speedOverride = speedEl.value; saveState(); refreshAllConsumption(); });
+      row.querySelector(".consum-del").addEventListener("click", () => {
+        state.routeLegs = state.routeLegs.filter(l => l.id !== leg.id);
+        saveState();
+        rebuildForLegChange();
+      });
+      routeLegsListEl.appendChild(row);
+    });
+  }
+
+  // The number of legs changed (add/remove) — every per-leg input list
+  // (route legs themselves, each fuel/lube row, fresh water) depends on that
+  // count, so all need reconstructing. A plain edit to one leg's own fields
+  // (above) never calls this.
+  function rebuildForLegChange(){
+    renderRouteLegs();
+    renderConsumableList(fuelListEl, "fuels");
+    renderConsumableList(lubeListEl, "lubeOils");
+    renderFreshWaterLegRates();
+    refreshAllConsumption();
+    updateLegTotalNote();
+  }
+
+  document.getElementById("addLegBtn").addEventListener("click", () => {
+    state.routeLegs.push(defaultRouteLeg(""));
+    syncLegRateKeys();
+    saveState();
+    rebuildForLegChange();
+  });
+
+  // Subtle cross-check on the ETA tab — not a hard block, just a heads-up
+  // when the leg breakdown doesn't add up to the primary "Distance to go".
+  function updateLegTotalNote(){
+    if(state.consumptionMode!=="region" || !state.routeLegs.length){ legTotalNote.hidden = true; return; }
+    let total = 0, any = false;
+    state.routeLegs.forEach(leg => { const d = parseFloat(leg.distance); if(isFinite(d)){ total += d; any = true; } });
+    if(!any){ legTotalNote.hidden = true; return; }
+    const mainDist = parseFloat(state.distance);
+    const mismatch = isFinite(mainDist) && Math.abs(total - mainDist) > 0.5;
+    legTotalNote.hidden = false;
+    legTotalNote.className = "req-note"+(mismatch ? " warn" : "");
+    legTotalNote.textContent = "Route legs total: "+total.toLocaleString(undefined,{maximumFractionDigits:1})+" nm"+
+      (mismatch ? " — doesn't match Distance to go ("+mainDist.toLocaleString()+" nm)" : "");
+  }
+
+  function applyConsumModeUI(){
+    const isRegion = state.consumptionMode === "region";
+    document.querySelectorAll("#consumModeTabs .loc-tab").forEach(btn => {
+      btn.classList.toggle("active", btn.dataset.mode === state.consumptionMode);
+    });
+    routeLegsCard.hidden = !isRegion;
+    document.getElementById("robSummaryCard").hidden = isRegion;
+    regionRobSummaryCard.hidden = !isRegion;
+    document.getElementById("fuelPerDayLabel").textContent = isRegion ? "Per leg" : "Per day ("+unitFor("fuels")+")";
+    document.getElementById("lubePerDayLabel").textContent = isRegion ? "Per leg" : "Per day ("+unitFor("lubeOils")+")";
+    fwConsField.hidden = isRegion;
+    fwProdField.hidden = isRegion;
+    fwConsLegRates.hidden = !isRegion;
+    fwProdLegRates.hidden = !isRegion;
+    updateLegTotalNote();
+  }
+
+  document.querySelectorAll("#consumModeTabs .loc-tab").forEach(btn => {
+    btn.addEventListener("click", () => {
+      if(btn.dataset.mode === state.consumptionMode) return;
+      state.consumptionMode = btn.dataset.mode;
+      if(state.consumptionMode==="region" && state.routeLegs.length===0){
+        state.routeLegs = [defaultRouteLeg(""), defaultRouteLeg("")];
+        syncLegRateKeys();
+      }
+      saveState();
+      applyConsumModeUI();
+      renderRouteLegs();
+      renderConsumableList(fuelListEl, "fuels");
+      renderConsumableList(lubeListEl, "lubeOils");
+      renderFreshWaterLegRates();
+      refreshAllConsumption();
+    });
+  });
+
+  // "Projected ROB Summary" — By Region's replacement for ROB Across Speed
+  // Range (which doesn't apply here, since there's no single planned speed).
+  // One row per fuel type / Fresh Water / lube oil type, reusing the exact
+  // status styling (consumableStatus/STATUS_LABEL/.consum-chip) already used
+  // for individual Straight-mode rows.
+  // producedAmount is null for fuel/lube (no production concept there); a
+  // number for Fresh Water, which nets consumption against production.
+  function regionSummaryRowHTML(name, rob, usedAmount, producedAmount, unit){
+    const robN = parseFloat(rob);
+    const net = usedAmount - (producedAmount||0);
+    let projected = null, burnRate = 0;
+    const totalHours = regionTotalHours();
+    if(isFinite(robN) && totalHours!=null && state.routeLegs.length){
+      projected = robN - net;
+      burnRate = totalHours>0 ? net/(totalHours/24) : 0;
+    }
+    const status = consumableStatus(projected, burnRate);
+    const usedText = producedAmount!=null
+      ? "used "+fmtQty(usedAmount)+" "+unit+", produced "+fmtQty(producedAmount)+" "+unit
+      : "used "+fmtQty(usedAmount)+" "+unit;
+    return '<div class="consum-row">'+
+      '<div class="consum-result"><span>'+escHtml(name)+': ROB '+fmtQty(robN)+' '+unit+', '+usedText+
+        (projected!=null ? ' &rarr; <b class="'+(projected<0?"danger-text":"brass-text")+'">'+fmtQty(projected)+' '+unit+'</b>' : '')+'</span>'+
+      '<span class="consum-chip '+status+'">'+STATUS_LABEL[status]+'</span></div>'+
+    '</div>';
+  }
+  function renderRegionRobSummary(){
+    if(state.consumptionMode!=="region") return;
+    const el = document.getElementById("regionRobSummaryBody");
+    if(!el) return;
+    if(!state.routeLegs.length){
+      el.innerHTML = '<p class="result-empty">Add at least one route leg to see projected ROB.</p>';
+      return;
+    }
+    let html = "";
+    state.consumption.fuels.forEach(it => {
+      const used = regionTotalUsed(leg => leg.fuelRates[it.id]);
+      html += regionSummaryRowHTML(it.name, it.rob, used, null, unitFor("fuels"));
+    });
+    const fw = state.consumption.freshWater;
+    const fwUsed = regionTotalUsed(leg => leg.fwCons), fwProd = regionTotalUsed(leg => leg.fwProd);
+    html += regionSummaryRowHTML("Fresh Water", fw.rob, fwUsed, fwProd, fw.unit);
+    state.consumption.lubeOils.forEach(it => {
+      const used = regionTotalUsed(leg => leg.lubeRates[it.id]);
+      html += regionSummaryRowHTML(it.name, it.rob, used, null, unitFor("lubeOils"));
+    });
+    el.innerHTML = html;
+  }
+  function refreshRegionRobSummary(){ renderRegionRobSummary(); }
+
   let lastRobBBText = "— enter ROB details —";
   // A quick at-a-glance status across every fuel, lube oil, and fresh water
   // line — mirrors what the ETA tab's bottom bar does for the ETA itself.
   function consumptionSummaryText(){
-    const days = daysToETA();
+    const isRegion = state.consumptionMode === "region";
+    const days = isRegion ? (regionTotalHours()!=null ? regionTotalHours()/24 : null) : daysToETA();
     let danger = 0, warn = 0, any = false;
     [...state.consumption.fuels, ...state.consumption.lubeOils].forEach(it => {
-      const rob = parseFloat(it.rob), perDay = parseFloat(it.perDay);
-      if(!isFinite(rob) || !isFinite(perDay)) return;
-      any = true;
-      if(days==null) return;
-      const status = consumableStatus(rob - perDay*days, perDay);
-      if(status==="danger") danger++; else if(status==="warn") warn++;
+      const rateMapKey = state.consumption.fuels.includes(it) ? "fuelRates" : "lubeRates";
+      const rob = parseFloat(it.rob);
+      if(isRegion){
+        if(!isFinite(rob) || !state.routeLegs.length) return;
+        any = true;
+        if(days==null) return;
+        const used = regionTotalUsed(leg => leg[rateMapKey][it.id]);
+        const status = consumableStatus(rob - used, days>0 ? used/days : 0);
+        if(status==="danger") danger++; else if(status==="warn") warn++;
+      } else {
+        const perDay = parseFloat(it.perDay);
+        if(!isFinite(rob) || !isFinite(perDay)) return;
+        any = true;
+        if(days==null) return;
+        const status = consumableStatus(rob - perDay*days, perDay);
+        if(status==="danger") danger++; else if(status==="warn") warn++;
+      }
     });
     const fw = state.consumption.freshWater;
     const fwRob = parseFloat(fw.rob);
     if(isFinite(fwRob)){
-      any = true;
-      if(days!=null){
-        const cons = parseFloat(fw.consPerDay)||0, prod = parseFloat(fw.prodPerDay)||0;
-        const status = consumableStatus(fwRob + (prod-cons)*days, cons-prod);
-        if(status==="danger") danger++; else if(status==="warn") warn++;
+      if(isRegion){
+        if(state.routeLegs.length){
+          any = true;
+          if(days!=null){
+            const used = regionTotalUsed(leg => leg.fwCons), produced = regionTotalUsed(leg => leg.fwProd);
+            const status = consumableStatus(fwRob + produced - used, days>0 ? (used-produced)/days : 0);
+            if(status==="danger") danger++; else if(status==="warn") warn++;
+          }
+        }
+      } else {
+        any = true;
+        if(days!=null){
+          const cons = parseFloat(fw.consPerDay)||0, prod = parseFloat(fw.prodPerDay)||0;
+          const status = consumableStatus(fwRob + (prod-cons)*days, cons-prod);
+          if(status==="danger") danger++; else if(status==="warn") warn++;
+        }
       }
     }
     if(!any) return "— enter ROB details —";
@@ -2959,6 +3353,7 @@
     refreshListSummary("fuels");
     refreshListSummary("lubeOils");
     refreshRobBottomBar();
+    updateLegTotalNote();
   }
 
   function render(){
@@ -3030,31 +3425,70 @@
       });
     }
 
-    const refCalc = getReferenceCalc();
-    const days = refCalc ? refCalc.hours/24 : calc.hours/24;
-    const refLabel = getRobReferenceLabel();
-    function reportRow(item, unit){
-      const rob = parseFloat(item.rob), perDay = parseFloat(item.perDay);
-      if(!isFinite(rob) && !isFinite(perDay)) return null;
-      const projected = (isFinite(rob) && isFinite(perDay)) ? rob - perDay*days : null;
-      return "  "+item.name+": ROB "+(isFinite(rob)?rob.toFixed(1):"—")+" "+unit+", "+(isFinite(perDay)?perDay.toFixed(1):"—")+" "+unit+"/day"+
-        (projected!=null ? " -> projected "+fmtQty(projected)+" "+unit+" at ETA" : "");
-    }
+    const isRegion = state.consumptionMode === "region";
     const fuelUnit = unitFor("fuels"), lubeUnit = unitFor("lubeOils");
-    const fuelLines = state.consumption.fuels.map(it => reportRow(it, fuelUnit)).filter(Boolean);
-    const lubeLines = state.consumption.lubeOils.map(it => reportRow(it, lubeUnit)).filter(Boolean);
     const fw = state.consumption.freshWater;
-    const fwRobN = parseFloat(fw.rob), fwConsN = parseFloat(fw.consPerDay)||0, fwProdN = parseFloat(fw.prodPerDay)||0;
-    if(fuelLines.length || lubeLines.length || isFinite(fwRobN)){
+
+    if(isRegion){
       lines.push("");
-      lines.push("CONSUMPTION (projected at ETA, "+days.toFixed(2)+" days"+(refLabel ? ", referenced to "+refLabel : "")+")");
-      if(fuelLines.length){ lines.push("Bunker fuel ("+fuelUnit+"):"); fuelLines.forEach(l=>lines.push(l)); }
-      if(isFinite(fwRobN)){
-        const fwProjected = fwRobN + (fwProdN - fwConsN)*days;
-        const fwUnit = fw.unit;
-        lines.push("Fresh water: ROB "+fwRobN.toFixed(1)+" "+fwUnit+", "+fwConsN.toFixed(1)+" "+fwUnit+"/day consumed, "+fwProdN.toFixed(1)+" "+fwUnit+"/day produced -> projected "+fmtQty(fwProjected)+" "+fwUnit+" at ETA");
+      lines.push("CONSUMPTION MODE: By Region");
+      if(state.routeLegs.length){
+        lines.push("");
+        lines.push("ROUTE LEGS");
+        state.routeLegs.forEach((leg, i) => {
+          const h = regionLegHours(leg);
+          const spd = parseFloat(leg.speedOverride) || parseFloat(state.speed);
+          const label = leg.label || ("Leg "+(i+1));
+          lines.push("  "+label+": "+(leg.distance||"—")+" nm at "+(isFinite(spd)?spd.toFixed(1):"—")+" kn"+
+            (h!=null ? " -> "+fmtDuration(h) : " (incomplete)"));
+        });
       }
-      if(lubeLines.length){ lines.push("Lube oil ("+lubeUnit+"):"); lubeLines.forEach(l=>lines.push(l)); }
+      const totalHours = regionTotalHours();
+      const anyRegionData = state.routeLegs.length && totalHours!=null;
+      if(anyRegionData){
+        lines.push("");
+        lines.push("PROJECTED ROB SUMMARY (projected at ETA, "+(totalHours/24).toFixed(2)+" days total)");
+        function regionRow(item, unit, rateMapKey){
+          const rob = parseFloat(item.rob);
+          if(!isFinite(rob)) return null;
+          const used = regionTotalUsed(leg => leg[rateMapKey][item.id]);
+          return "  "+item.name+": ROB "+rob.toFixed(1)+" "+unit+", used "+fmtQty(used)+" "+unit+" -> projected "+fmtQty(rob-used)+" "+unit+" at ETA";
+        }
+        const fuelLines = state.consumption.fuels.map(it => regionRow(it, fuelUnit, "fuelRates")).filter(Boolean);
+        const lubeLines = state.consumption.lubeOils.map(it => regionRow(it, lubeUnit, "lubeRates")).filter(Boolean);
+        if(fuelLines.length){ lines.push("Bunker fuel ("+fuelUnit+"):"); fuelLines.forEach(l=>lines.push(l)); }
+        const fwRobN = parseFloat(fw.rob);
+        if(isFinite(fwRobN)){
+          const used = regionTotalUsed(leg => leg.fwCons), produced = regionTotalUsed(leg => leg.fwProd);
+          lines.push("Fresh water: ROB "+fwRobN.toFixed(1)+" "+fw.unit+", used "+fmtQty(used)+" "+fw.unit+", produced "+fmtQty(produced)+" "+fw.unit+" -> projected "+fmtQty(fwRobN+produced-used)+" "+fw.unit+" at ETA");
+        }
+        if(lubeLines.length){ lines.push("Lube oil ("+lubeUnit+"):"); lubeLines.forEach(l=>lines.push(l)); }
+      }
+    } else {
+      const refCalc = getReferenceCalc();
+      const days = refCalc ? refCalc.hours/24 : calc.hours/24;
+      const refLabel = getRobReferenceLabel();
+      function reportRow(item, unit){
+        const rob = parseFloat(item.rob), perDay = parseFloat(item.perDay);
+        if(!isFinite(rob) && !isFinite(perDay)) return null;
+        const projected = (isFinite(rob) && isFinite(perDay)) ? rob - perDay*days : null;
+        return "  "+item.name+": ROB "+(isFinite(rob)?rob.toFixed(1):"—")+" "+unit+", "+(isFinite(perDay)?perDay.toFixed(1):"—")+" "+unit+"/day"+
+          (projected!=null ? " -> projected "+fmtQty(projected)+" "+unit+" at ETA" : "");
+      }
+      const fuelLines = state.consumption.fuels.map(it => reportRow(it, fuelUnit)).filter(Boolean);
+      const lubeLines = state.consumption.lubeOils.map(it => reportRow(it, lubeUnit)).filter(Boolean);
+      const fwRobN = parseFloat(fw.rob), fwConsN = parseFloat(fw.consPerDay)||0, fwProdN = parseFloat(fw.prodPerDay)||0;
+      if(fuelLines.length || lubeLines.length || isFinite(fwRobN)){
+        lines.push("");
+        lines.push("CONSUMPTION (projected at ETA, "+days.toFixed(2)+" days"+(refLabel ? ", referenced to "+refLabel : "")+")");
+        if(fuelLines.length){ lines.push("Bunker fuel ("+fuelUnit+"):"); fuelLines.forEach(l=>lines.push(l)); }
+        if(isFinite(fwRobN)){
+          const fwProjected = fwRobN + (fwProdN - fwConsN)*days;
+          const fwUnit = fw.unit;
+          lines.push("Fresh water: ROB "+fwRobN.toFixed(1)+" "+fwUnit+", "+fwConsN.toFixed(1)+" "+fwUnit+"/day consumed, "+fwProdN.toFixed(1)+" "+fwUnit+"/day produced -> projected "+fmtQty(fwProjected)+" "+fwUnit+" at ETA");
+        }
+        if(lubeLines.length){ lines.push("Lube oil ("+lubeUnit+"):"); lubeLines.forEach(l=>lines.push(l)); }
+      }
     }
 
     return lines.join("\n");
@@ -3178,6 +3612,8 @@
     if(state.dep.portIndex!=null && !PORTS_ALL[state.dep.portIndex]) state.dep.portIndex = null;
     if(state.arr.portIndex!=null && !PORTS_ALL[state.arr.portIndex]) state.arr.portIndex = null;
     state.altArrivals = normalizeAltArrivals(state.altArrivals, state.speed);
+    state.consumptionMode = state.consumptionMode === "region" ? "region" : "straight";
+    state.routeLegs = normalizeRouteLegs(state.routeLegs);
     saveState();
     hydrateUI();
     closeHistory();
@@ -3255,6 +3691,9 @@
     applyUnitLabels();
     renderConsumableList(fuelListEl, "fuels");
     renderConsumableList(lubeListEl, "lubeOils");
+    renderRouteLegs();
+    renderFreshWaterLegRates();
+    applyConsumModeUI();
     render();
   }
 
