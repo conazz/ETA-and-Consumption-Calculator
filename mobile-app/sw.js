@@ -1,6 +1,6 @@
 // Bump this when you publish an update to the app — it forces old cached
 // files (on phones that already installed it) to be replaced.
-const CACHE_NAME = "eta-calculator-v13";
+const CACHE_NAME = "eta-calculator-v14";
 
 const CORE_ASSETS = [
   "./",

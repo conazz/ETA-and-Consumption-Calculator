@@ -544,6 +544,12 @@
     font-family:var(--font-display); font-size:11px; letter-spacing:0.12em; text-transform:uppercase;
     color:var(--text-dim); margin:0 0 10px; font-weight:600;
   }
+  /* A collapsible section's heading text is itself a second way to toggle it
+     (alongside the arrow) — colored to match the arrow so it reads as part
+     of the same control, not just decoration. */
+  .collapsible-title{ cursor:pointer; }
+  .collapsible-title:hover{ text-decoration:underline; }
+  #etaRangeTitle.collapsible-title{ color:var(--accent); }
   /* Collapsible-section header (ETA/ROB across speed range) — the chevron
      rotates to show state; the section body's own [hidden] does the rest
      (default UA rule, since no rule here sets `display` unconditionally on
@@ -929,7 +935,7 @@
     <section class="card card--result" id="robSummaryCard">
       <p class="nameplate">
         <span class="nameplate-title-row">
-          <span id="robSummaryTitle">ROB Across Speed Range</span>
+          <span class="collapsible-title" id="robSummaryTitle">ROB Across Speed Range</span>
           <button type="button" class="collapse-btn" id="robRangeToggle" aria-expanded="true" aria-label="Toggle ROB across speed range">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg>
           </button>
@@ -947,7 +953,7 @@
     <section class="card card--result" id="regionRobSummaryCard" hidden>
       <p class="nameplate">
         <span class="nameplate-title-row">
-          <span>Projected ROB Summary</span>
+          <span class="collapsible-title" id="regionRobSummaryTitle">Projected ROB Summary</span>
           <button type="button" class="collapse-btn" id="regionRobRangeToggle" aria-expanded="true" aria-label="Toggle Projected ROB Summary">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg>
           </button>
@@ -2431,6 +2437,15 @@
     if(!state.altArrivals.length) return null;
     return getRobReferencePortLabel();
   }
+  // The distance figure behind whichever port getReferenceCalc() is currently
+  // using — By Region's per-leg distance cap needs just the number.
+  function getRobReferenceDistance(){
+    if(state.robReferencePort && state.robReferencePort !== "primary"){
+      const alt = state.altArrivals.find(a => a.id === state.robReferencePort);
+      if(alt) return alt.distance;
+    }
+    return state.distance;
+  }
 
   function fmtDuration(hoursFloat){
     const totalMin = Math.round(hoursFloat*60);
@@ -2579,7 +2594,7 @@
     const etaCollapsed = !!state.etaSpeedRangeCollapsed;
     function speedRangeSectionHtml(bodyHtml){
       return '<div class="var-wrap">'+
-        '<div class="var-wrap-head"><h3>'+escHtml("ETA Across Speed Range — "+focusPortLabel)+'</h3>'+
+        '<div class="var-wrap-head"><h3 class="collapsible-title" id="etaRangeTitle">'+escHtml("ETA Across Speed Range — "+focusPortLabel)+'</h3>'+
           '<button type="button" class="collapse-btn'+(etaCollapsed?" collapsed":"")+'" id="etaRangeToggle" aria-expanded="'+(!etaCollapsed)+'" aria-label="Toggle speed range table">'+
             '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg>'+
           '</button>'+
@@ -2593,14 +2608,20 @@
       wireRangeControls();
       const toggleBtn = document.getElementById("etaRangeToggle");
       const toggleBody = document.getElementById("etaRangeBody");
+      const toggleTitle = document.getElementById("etaRangeTitle");
       if(toggleBtn && toggleBody){
-        toggleBtn.addEventListener("click", () => {
+        const toggle = () => {
           state.etaSpeedRangeCollapsed = !state.etaSpeedRangeCollapsed;
           saveState();
           toggleBody.hidden = state.etaSpeedRangeCollapsed;
           toggleBtn.classList.toggle("collapsed", state.etaSpeedRangeCollapsed);
           toggleBtn.setAttribute("aria-expanded", String(!state.etaSpeedRangeCollapsed));
-        });
+        };
+        // Both the arrow and the heading text toggle the same table — two
+        // independent triggers calling the same function, not nested, so
+        // clicking the arrow never double-fires through a parent handler.
+        toggleBtn.addEventListener("click", toggle);
+        if(toggleTitle) toggleTitle.addEventListener("click", toggle);
       }
       if(refocus){
         const el = document.getElementById(refocus.id);
@@ -3104,11 +3125,16 @@
     robRangeToggle.classList.toggle("collapsed", collapsed);
     robRangeToggle.setAttribute("aria-expanded", String(!collapsed));
   }
-  robRangeToggle.addEventListener("click", () => {
+  function toggleRobRangeCollapsed(){
     state.robSpeedRangeCollapsed = !state.robSpeedRangeCollapsed;
     saveState();
     applyRobRangeCollapsedState();
-  });
+  }
+  // The arrow and the heading text are two independent triggers calling the
+  // same function (not nested), so clicking the arrow never double-fires
+  // through a parent handler on the heading.
+  robRangeToggle.addEventListener("click", toggleRobRangeCollapsed);
+  document.getElementById("robSummaryTitle").addEventListener("click", toggleRobRangeCollapsed);
 
   // Projected ROB Summary (By Region mode) — same collapsible pattern.
   const regionRobRangeToggle = document.getElementById("regionRobRangeToggle");
@@ -3119,11 +3145,14 @@
     regionRobRangeToggle.classList.toggle("collapsed", collapsed);
     regionRobRangeToggle.setAttribute("aria-expanded", String(!collapsed));
   }
-  regionRobRangeToggle.addEventListener("click", () => {
+  function toggleRegionRobRangeCollapsed(){
     state.regionRobSummaryCollapsed = !state.regionRobSummaryCollapsed;
     saveState();
     applyRegionRobRangeCollapsedState();
-  });
+  }
+  regionRobRangeToggle.addEventListener("click", toggleRegionRobRangeCollapsed);
+  document.getElementById("regionRobSummaryTitle").addEventListener("click", toggleRegionRobRangeCollapsed);
+
   function renderConsumInfo(){
     renderRobSummaryTitle();
     const el = document.getElementById("consumInfo");
@@ -3184,7 +3213,7 @@
       // way the ETA tab's variance/interval fields once did.
       labelEl.addEventListener("input", () => { leg.label = labelEl.value; saveState(); });
       distEl.addEventListener("input", () => {
-        const maxDist = parseFloat(state.distance);
+        const maxDist = parseFloat(getRobReferenceDistance());
         let val = parseFloat(distEl.value);
         if(isFinite(maxDist) && maxDist>0 && isFinite(val) && val>maxDist){
           distEl.value = maxDist;
@@ -3231,14 +3260,19 @@
   // renderRouteLegs()) since this always needs to re-run whenever
   // state.distance changes too, not just when legs are added/removed.
   function updateLegDistanceCaps(){
-    const maxDist = parseFloat(state.distance);
+    // Follows whichever port the "ROB reference arrival" selector is
+    // currently pointing at (defaults to primary) — legs are being used to
+    // project consumption, so the cap should match what that projection is
+    // actually referenced against, not always the primary voyage.
+    const maxDist = parseFloat(getRobReferenceDistance());
+    const portLabel = getRobReferencePortLabel();
     document.querySelectorAll("#routeLegsList .route-leg").forEach(row => {
       const distEl = row.querySelector(".leg-distance");
       const hintEl = row.querySelector(".req-note");
       if(isFinite(maxDist) && maxDist>0){
         distEl.max = maxDist;
         hintEl.hidden = false;
-        hintEl.textContent = "Max "+maxDist.toLocaleString()+" nm (ETA tab's Distance to go)";
+        hintEl.textContent = "Max "+maxDist.toLocaleString()+" nm — "+portLabel+" (ROB reference arrival)";
       } else {
         distEl.removeAttribute("max");
         hintEl.hidden = true;
