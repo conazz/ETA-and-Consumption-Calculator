@@ -525,8 +525,8 @@
   .nameplate-title-row{ display:flex; align-items:center; gap:6px; }
   .collapse-btn{
     display:flex; align-items:center; justify-content:center;
-    width:22px; height:22px; flex:none; padding:0;
-    background:none; border:none; color:var(--text-dim); cursor:pointer;
+    width:30px; height:30px; flex:none; padding:0;
+    background:none; border:none; color:var(--accent); cursor:pointer;
   }
   .collapse-btn:hover{ color:var(--text); }
   .collapse-btn:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; border-radius:4px; }
@@ -538,7 +538,11 @@
      automatically for anyone who has that preference set. */
   @keyframes collapseBtnBounceDown{ 0%, 100%{ transform:translateY(0); } 50%{ transform:translateY(3px); } }
   @keyframes collapseBtnBounceRight{ 0%, 100%{ transform:rotate(-90deg) translateY(0); } 50%{ transform:rotate(-90deg) translateY(3px); } }
-  .collapse-btn svg{ width:16px; height:16px; animation:collapseBtnBounceDown 1.6s ease-in-out infinite; }
+  .collapse-btn svg{
+    width:22px; height:22px; animation:collapseBtnBounceDown 1.6s ease-in-out infinite;
+    filter:drop-shadow(0 0 5px var(--accent)) drop-shadow(0 0 2px var(--accent));
+  }
+  .collapse-btn:hover svg{ filter:drop-shadow(0 0 7px var(--accent)) drop-shadow(0 0 3px var(--accent)); }
   .collapse-btn.collapsed svg{ animation:collapseBtnBounceRight 1.6s ease-in-out infinite; }
   table.var-table{ width:100%; border-collapse:collapse; font-family:var(--font-mono); font-size:12.5px; }
   .var-table th{
@@ -753,7 +757,7 @@
     <section class="card">
       <div class="switch-row">
         <div>
-          <p class="nameplate" style="margin-bottom:4px;">Required Speed</p>
+          <p class="nameplate" id="reqNameplate" style="margin-bottom:4px;">Required Speed</p>
           <p>Work backward from a target arrival time.</p>
         </div>
         <label class="switch">
@@ -2355,21 +2359,25 @@
     return rows;
   }
 
+  // Tracks the same focused port as the ETA card above (via getFocusPort()) —
+  // switching ports there changes which distance/arrival-zone this required-
+  // speed figure is worked out against too, not just the primary voyage.
   function requiredSpeedCalc(){
     const dep = departureInstant();
-    const distance = parseFloat(state.distance);
+    const focus = getFocusPort();
+    const distance = parseFloat(focus.distance);
     if(!dep || !isFinite(distance) || distance<=0) return {status:"incomplete"};
     if(!state.reqDate || !state.reqTime) return {status:"incomplete"};
     let zone;
     if(state.reqZone==="utc") zone = "UTC";
     else if(state.reqZone==="dep") zone = dep.zoneInfo.zone;
-    else { const zi = getZoneInfo(state.arr); if(!zi) return {status:"needzone"}; zone = zi.zone; }
+    else { if(!focus.arrZI) return {status:"needzone"}; zone = focus.arrZI.zone; }
     const dt = DT.fromISO(state.reqDate+"T"+state.reqTime, {zone});
     if(!dt.isValid) return {status:"invalid"};
     const availHours = dt.toUTC().diff(dep.instant.toUTC(),"hours").hours;
     if(availHours<=0) return {status:"past"};
     const reqSpeed = distance/availHours;
-    return {status:"ok", reqSpeed, availHours, targetUTC: dt.toUTC()};
+    return {status:"ok", reqSpeed, availHours, targetUTC: dt.toUTC(), portLabel: focus.label, plannedSpeed: focus.speed};
   }
 
   /* ---------------- Rendering ---------------- */
@@ -2388,7 +2396,9 @@
       btn.addEventListener("click", () => {
         state.etaSpeedRangePort = btn.dataset.portSwitch;
         saveState();
-        renderResult();
+        // Full render(), not just renderResult() — Required Speed's heading
+        // and figures track this same port selection too.
+        render();
       });
     });
   }
@@ -2410,6 +2420,22 @@
     }
   }
 
+  // Self-heals a stale/deleted port selection, then reports which port the
+  // whole ETA tab — main figure, bottom bar, speed-range table, AND Required
+  // Speed — is currently focused on. The port-switch buttons (built in
+  // renderResult()) are what change this; every consumer just reads it.
+  function getFocusPort(){
+    const validPortIds = ["primary"].concat(state.altArrivals.map(a => a.id));
+    if(!validPortIds.includes(state.etaSpeedRangePort)) state.etaSpeedRangePort = "primary";
+    const alt = state.etaSpeedRangePort!=="primary"
+      ? state.altArrivals.find(a => a.id === state.etaSpeedRangePort) : null;
+    const distance = alt ? alt.distance : state.distance;
+    const speed = alt ? alt.speed : state.speed;
+    const arrZI = getZoneInfo(alt ? alt.arr : state.arr);
+    const label = arrZI ? arrZI.label : "arrival not set";
+    return {alt, distance, speed, arrZI, label};
+  }
+
   function renderResult(){
     // #resultBody gets fully rebuilt below, which would normally steal focus
     // away from the variance/interval inputs (they live inside it) on every
@@ -2421,18 +2447,11 @@
       refocus = {id: active.id, start: active.selectionStart, end: active.selectionEnd};
     }
 
-    // Self-heal a stale/deleted port selection, then figure out which port
-    // the whole card — main ETA figure, bottom bar, and the speed-range
-    // table below — is currently focused on. The switcher (built below) is
-    // what changes this: picking a different port there updates everything
-    // in this card at once, not just the speed-range table.
-    const validPortIds = ["primary"].concat(state.altArrivals.map(a => a.id));
-    if(!validPortIds.includes(state.etaSpeedRangePort)) state.etaSpeedRangePort = "primary";
-    const focusAlt = state.etaSpeedRangePort!=="primary"
-      ? state.altArrivals.find(a => a.id === state.etaSpeedRangePort) : null;
+    const focus = getFocusPort();
+    const focusAlt = focus.alt;
     const calc = focusAlt ? calcETAFor(focusAlt.distance, focusAlt.speed) : primaryETA();
-    const focusArrZI = getZoneInfo(focusAlt ? focusAlt.arr : state.arr);
-    const focusPortLabel = focusArrZI ? focusArrZI.label : "arrival not set";
+    const focusArrZI = focus.arrZI;
+    const focusPortLabel = focus.label;
     etaCardTitle.textContent = "Estimated Time of Arrival — "+focusPortLabel;
     lastEtaBBPortLabel = focusPortLabel;
 
@@ -2563,6 +2582,10 @@
   }
 
   function renderRequired(){
+    // Tracks the same port-switch selection as the ETA card, so this heading
+    // always names whichever arrival the required-speed figure below (if
+    // shown) is actually worked out against.
+    document.getElementById("reqNameplate").textContent = "Required Speed — "+getFocusPort().label;
     if(!state.reqEnabled) { reqResultEl.innerHTML=""; return; }
     const r = requiredSpeedCalc();
     if(r.status==="incomplete"){
@@ -2581,7 +2604,7 @@
       reqResultEl.innerHTML = '<div class="req-result"><p class="req-note danger">Required ETA must be after the current departure date &amp; time.</p></div>';
       return;
     }
-    const speed = parseFloat(state.speed);
+    const speed = parseFloat(r.plannedSpeed);
     let deltaHTML = "";
     if(isFinite(speed) && speed>0){
       const diff = r.reqSpeed - speed;
