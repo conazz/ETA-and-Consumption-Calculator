@@ -1,0 +1,2625 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ETA Calculator</title>
+<meta name="description" content="ETA and consumption calculator for deck officers">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0b1420">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="ETA Calculator">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+</head>
+<body>
+<style>
+  :root{
+    --bg:#0b1420;
+    --surface:#101d2e;
+    --surface2:#17283c;
+    --border:#24384f;
+    --text:#e8eef4;
+    --text-dim:#8ea3b8;
+    --accent:#35c7be;
+    --accent-ink:#052421;
+    --brass:#e8a94c;
+    --brass-ink:#2a1c05;
+    --ok:#4ade80;
+    --warn:#f5a623;
+    --danger:#f87171;
+    --shadow:rgba(0,0,0,.45);
+    --font-display:'Oswald','Arial Narrow',sans-serif;
+    --font-body:'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+    --font-mono:'IBM Plex Mono','SFMono-Regular',Consolas,'Liberation Mono',monospace;
+  }
+  @media (prefers-color-scheme: light){
+    :root:not([data-theme="dark"]){
+      --bg:#eef2f5;
+      --surface:#ffffff;
+      --surface2:#f3f7f9;
+      --border:#d7dfe6;
+      --text:#132234;
+      --text-dim:#5a6c7d;
+      --accent:#0e9488;
+      --accent-ink:#ffffff;
+      --brass:#a8721e;
+      --brass-ink:#ffffff;
+      --ok:#15803d;
+      --warn:#b45309;
+      --danger:#dc2626;
+      --shadow:rgba(20,40,60,.14);
+    }
+  }
+  :root[data-theme="light"]{
+    --bg:#eef2f5;
+    --surface:#ffffff;
+    --surface2:#f3f7f9;
+    --border:#d7dfe6;
+    --text:#132234;
+    --text-dim:#5a6c7d;
+    --accent:#0e9488;
+    --accent-ink:#ffffff;
+    --brass:#a8721e;
+    --brass-ink:#ffffff;
+    --ok:#15803d;
+    --warn:#b45309;
+    --danger:#dc2626;
+    --shadow:rgba(20,40,60,.14);
+  }
+  :root[data-theme="dark"]{
+    --bg:#0b1420;
+    --surface:#101d2e;
+    --surface2:#17283c;
+    --border:#24384f;
+    --text:#e8eef4;
+    --text-dim:#8ea3b8;
+    --accent:#35c7be;
+    --accent-ink:#052421;
+    --brass:#e8a94c;
+    --brass-ink:#2a1c05;
+    --ok:#4ade80;
+    --warn:#f5a623;
+    --danger:#f87171;
+    --shadow:rgba(0,0,0,.45);
+  }
+
+  *{box-sizing:border-box;}
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:var(--font-body);
+    -webkit-font-smoothing:antialiased;
+    min-height:100vh;
+  }
+  @media (prefers-reduced-motion: reduce){
+    *{animation-duration:0.001ms !important; transition-duration:0.001ms !important;}
+  }
+
+  .app{
+    max-width:480px;
+    margin:0 auto;
+    min-height:100vh;
+    display:flex;
+    flex-direction:column;
+    padding-bottom:88px;
+  }
+
+  /* ---------- Desktop layout ----------
+     Shared by both tabs: .split-col-side (the result / summary card) is
+     pulled visually to the top via `order` below the breakpoint, even
+     though it comes second in the markup, so a wide window can lay it out
+     as a sticky side column instead. Above the breakpoint it becomes a real
+     two-column grid and the bottom summary bar (redundant once the result
+     card is always visible in the sidebar) is hidden. */
+  .split-grid{ display:flex; flex-direction:column; gap:14px; }
+  .split-col-main{ display:flex; flex-direction:column; gap:14px; min-width:0; }
+  .split-col-side{ display:flex; flex-direction:column; gap:14px; order:-1; min-width:0; }
+  /* Sub-grid for the Fuel / Fresh Water / Lube Oil input cards inside the main column. */
+  .consum-grid{ display:flex; flex-direction:column; gap:14px; }
+
+  @media (min-width: 880px){
+    .app{ max-width:1180px; padding-bottom:24px; }
+    .split-grid{ display:grid; grid-template-columns: 1fr 360px; gap:20px; align-items:start; }
+    .split-col-side{ order:0; position:sticky; top:16px; }
+    .consum-grid{ display:grid; grid-template-columns: 1fr 1fr; gap:16px; align-items:start; }
+    .consum-span2{ grid-column: 1 / -1; }
+  }
+
+  /* ---------- Top bar ---------- */
+  .topbar{
+    position:sticky; top:0; z-index:20;
+    display:flex; align-items:center; justify-content:space-between;
+    gap:12px;
+    padding:16px 18px 14px;
+    background:linear-gradient(180deg, var(--bg) 70%, transparent);
+  }
+  .brand{ display:flex; align-items:center; gap:10px; }
+  .brand-mark{ color:var(--accent); flex:none; }
+  .brand-text h1{
+    font-family:var(--font-display);
+    font-weight:600;
+    font-size:19px;
+    letter-spacing:0.03em;
+    text-transform:uppercase;
+    margin:0;
+    line-height:1;
+  }
+  .brand-text p{
+    margin:2px 0 0;
+    font-size:11px;
+    color:var(--text-dim);
+    letter-spacing:0.06em;
+    text-transform:uppercase;
+  }
+  .theme-toggle{
+    display:flex; align-items:center; gap:6px;
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:999px;
+    padding:6px 12px 6px 10px;
+    color:var(--text-dim);
+    font-family:var(--font-body);
+    font-size:12px;
+    cursor:pointer;
+    transition:border-color .15s, color .15s;
+  }
+  .theme-toggle:hover{ color:var(--text); border-color:var(--accent); }
+  .theme-toggle:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
+  .theme-toggle svg{ width:15px; height:15px; }
+  .topbar-actions{ display:flex; align-items:center; gap:8px; }
+  .icon-btn{
+    display:flex; align-items:center; justify-content:center;
+    width:34px; height:34px; flex:none;
+    background:var(--surface); border:1px solid var(--border); border-radius:50%;
+    color:var(--text-dim); cursor:pointer;
+  }
+  .icon-btn:hover{ color:var(--text); border-color:var(--accent); }
+  .icon-btn:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
+  .icon-btn svg{ width:16px; height:16px; }
+
+  /* ---------- Main tabs ---------- */
+  .main-tabs{ display:flex; gap:8px; padding:0 16px 12px; }
+  .main-tab{
+    flex:1; text-align:center;
+    font-family:var(--font-display); font-weight:600; font-size:12.5px;
+    letter-spacing:0.08em; text-transform:uppercase;
+    padding:10px 8px; border-radius:10px;
+    border:1px solid var(--border); background:var(--surface); color:var(--text-dim);
+    cursor:pointer;
+  }
+  .main-tab.active{ background:var(--accent); border-color:var(--accent); color:var(--accent-ink); }
+  .main-tab:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
+
+  /* ---------- Cards ---------- */
+  main{ padding:2px 16px 8px; display:flex; flex-direction:column; gap:14px; }
+  /* display lives on :not([hidden]) — see the note further down on .sheet-overlay
+     for why an unconditional `display` here would break the hidden attribute. */
+  .tab-panel:not([hidden]){ display:flex; flex-direction:column; gap:14px; }
+  .card{
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:14px;
+    padding:16px 16px 18px;
+    box-shadow:0 6px 18px -10px var(--shadow);
+    position:relative;
+  }
+  .nameplate{
+    font-family:var(--font-display);
+    font-weight:600;
+    font-size:12px;
+    letter-spacing:0.14em;
+    text-transform:uppercase;
+    color:var(--accent);
+    margin:0 0 12px;
+    display:flex; align-items:center; justify-content:space-between;
+  }
+  .nameplate .rivet{
+    width:6px; height:6px; border-radius:50%;
+    background:var(--border);
+  }
+  .unit-select{
+    width:auto; flex:none;
+    font-family:var(--font-mono); font-size:11px; font-weight:600;
+    text-transform:none; letter-spacing:normal;
+    background:var(--surface2); border:1px solid var(--border); color:var(--accent);
+    border-radius:6px; padding:3px 6px;
+  }
+
+  /* ---------- Results card ---------- */
+  .card--result{
+    border-color:color-mix(in srgb, var(--brass) 35%, var(--border));
+    background:linear-gradient(160deg, var(--surface) 65%, color-mix(in srgb, var(--brass) 7%, var(--surface)));
+  }
+  .result-empty{
+    color:var(--text-dim);
+    font-size:13.5px;
+    line-height:1.5;
+    padding:6px 2px 2px;
+  }
+  .result-eta-label{
+    font-family:var(--font-display);
+    font-size:11px;
+    letter-spacing:0.14em;
+    text-transform:uppercase;
+    color:var(--text-dim);
+    margin-bottom:4px;
+  }
+  .result-eta-date{
+    font-family:var(--font-mono);
+    font-variant-numeric:tabular-nums;
+    font-weight:600;
+    font-size:26px;
+    color:var(--brass);
+    line-height:1.15;
+  }
+  .result-eta-time{
+    font-family:var(--font-mono);
+    font-variant-numeric:tabular-nums;
+    font-weight:500;
+    font-size:15px;
+    color:var(--text);
+    margin-top:2px;
+  }
+  .result-eta-time span{ color:var(--text-dim); }
+  .stat-grid{
+    display:grid; grid-template-columns:repeat(3,1fr); gap:8px;
+    margin:16px 0 4px;
+  }
+  .stat-tile{
+    background:var(--surface2);
+    border:1px solid var(--border);
+    border-radius:10px;
+    padding:9px 8px;
+  }
+  .stat-tile .k{
+    font-size:10px; letter-spacing:0.08em; text-transform:uppercase;
+    color:var(--text-dim); margin-bottom:3px;
+  }
+  .stat-tile .v{
+    font-family:var(--font-mono); font-variant-numeric:tabular-nums;
+    font-size:14px; font-weight:500; color:var(--text);
+  }
+  .result-secondary{
+    margin-top:12px; padding-top:12px; border-top:1px dashed var(--border);
+    display:flex; flex-direction:column; gap:4px;
+  }
+  .result-secondary div{
+    font-family:var(--font-mono); font-variant-numeric:tabular-nums;
+    font-size:12px; color:var(--text-dim); display:flex; justify-content:space-between; gap:10px;
+  }
+  .result-secondary div b{ color:var(--text); font-weight:500; }
+
+  /* Passage time / ETA highlight tiles for alternative arrival cards —
+     reuses .stat-tile's box treatment, laid out as a 2-up flex row. */
+  .alt-highlight{ display:flex; gap:8px; margin-top:12px; }
+  .alt-highlight .stat-tile{ flex:1; }
+  .alt-highlight .stat-tile .v span{ color:var(--text-dim); font-weight:400; font-size:11px; }
+
+  .btn{
+    font-family:var(--font-body);
+    font-size:13px; font-weight:600;
+    border-radius:9px; border:1px solid var(--border);
+    background:var(--surface2); color:var(--text);
+    padding:9px 14px;
+    display:inline-flex; align-items:center; gap:7px;
+    cursor:pointer;
+    transition:transform .1s, border-color .15s, background .15s;
+  }
+  .btn:hover{ border-color:var(--accent); }
+  .btn:active{ transform:scale(0.97); }
+  .btn:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
+  .btn svg{ width:14px; height:14px; flex:none; }
+  .btn-accent{ background:var(--accent); border-color:var(--accent); color:var(--accent-ink); }
+  .btn-full{ width:100%; justify-content:center; margin-top:14px; }
+
+  /* ---------- Fields ---------- */
+  /* display on :not([hidden]) — an unconditional display here would defeat
+     the hidden attribute on any .field that gets conditionally shown/hidden
+     (e.g. #robRefWrap), since author CSS beats the UA's [hidden]{display:none}. */
+  .field{ flex-direction:column; gap:6px; }
+  .field:not([hidden]){ display:flex; }
+  .field label, .field-label{
+    font-size:11.5px; font-weight:600; letter-spacing:0.03em;
+    color:var(--text-dim); text-transform:uppercase;
+  }
+  .field-row{ display:flex; gap:10px; }
+  .field-row > *{ flex:1; min-width:0; }
+  input[type="text"], input[type="number"], input[type="date"], input[type="time"], select{
+    width:100%;
+    background:var(--surface2);
+    border:1px solid var(--border);
+    color:var(--text);
+    border-radius:9px;
+    padding:10px 11px;
+    font-family:var(--font-mono);
+    font-size:14px;
+    font-variant-numeric:tabular-nums;
+    accent-color:var(--accent);
+  }
+  input::placeholder{ color:var(--text-dim); font-family:var(--font-body); }
+  input:focus-visible, select:focus-visible{ outline:2px solid var(--accent); outline-offset:1px; }
+  .row-gap{ display:flex; flex-direction:column; gap:12px; }
+  .btn-now{
+    align-self:flex-start;
+    font-size:11.5px; padding:6px 10px;
+  }
+
+  .deg-input{ display:flex; gap:6px; }
+  .deg-input input{ flex:1; min-width:0; }
+  .deg-input select{ width:58px; flex:none; }
+
+  /* ---------- Location tabs / combobox ---------- */
+  .loc-tabs{ display:flex; gap:6px; margin-bottom:10px; }
+  .loc-tab{
+    flex:1; text-align:center;
+    font-family:var(--font-body); font-size:12.5px; font-weight:600;
+    padding:7px 8px; border-radius:8px;
+    border:1px solid var(--border); background:var(--surface2); color:var(--text-dim);
+    cursor:pointer;
+  }
+  .loc-tab.active{ background:var(--accent); border-color:var(--accent); color:var(--accent-ink); }
+  .loc-tab:focus-visible{ outline:2px solid var(--accent); outline-offset:1px; }
+
+  .combo{ position:relative; }
+  .combo-list{
+    position:absolute; left:0; right:0; top:calc(100% + 6px);
+    background:var(--surface2); border:1px solid var(--border); border-radius:10px;
+    max-height:230px; overflow-y:auto; z-index:30;
+    box-shadow:0 10px 24px -8px var(--shadow);
+  }
+  .combo-item{
+    padding:9px 12px; cursor:pointer; border-bottom:1px solid var(--border);
+    display:flex; justify-content:space-between; align-items:baseline; gap:8px;
+  }
+  .combo-item:last-child{ border-bottom:none; }
+  .combo-item:hover, .combo-item.hi{ background:var(--bg); }
+  .combo-item .pname{ font-size:13.5px; font-weight:500; }
+  .combo-item .ptz{ font-size:10.5px; color:var(--text-dim); font-family:var(--font-mono); white-space:nowrap; }
+  .combo-empty{ padding:12px; font-size:12.5px; color:var(--text-dim); }
+
+  .tz-badge{
+    margin-top:10px;
+    display:inline-flex; align-items:center; gap:7px;
+    background:var(--surface2); border:1px solid var(--border);
+    border-radius:999px; padding:6px 12px;
+    font-family:var(--font-mono); font-size:12px; color:var(--accent);
+  }
+  .tz-badge .dot{ width:6px; height:6px; border-radius:50%; background:var(--accent); }
+  .tz-badge.muted{ color:var(--text-dim); }
+  .tz-badge.muted .dot{ background:var(--text-dim); }
+  .tz-badge.edited{ color:var(--brass); }
+  .tz-badge.edited .dot{ background:var(--brass); }
+
+  .tz-section{ margin-top:10px; }
+  .link-btn{
+    background:none; border:none; padding:2px 0;
+    font-family:var(--font-body); font-size:12px; font-weight:600;
+    color:var(--accent); cursor:pointer;
+  }
+  .link-btn:hover{ text-decoration:underline; }
+  .link-btn:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
+  .tz-override-row{ margin-top:8px; }
+  /* display lives on :not([hidden]), not the base rule — see the note on
+     .sheet-overlay above; this element is also toggled via the hidden attribute. */
+  .add-port-form{
+    margin-top:10px; padding:12px; border-radius:10px;
+    background:var(--surface2); border:1px solid var(--border);
+    gap:10px;
+  }
+  .add-port-form:not([hidden]){ display:flex; flex-direction:column; }
+  .btn-row{ display:flex; gap:8px; }
+  .btn-row .btn{ flex:1; justify-content:center; }
+  .loc-port > .link-btn{ margin-top:8px; display:inline-block; }
+
+  /* ---------- Swap ---------- */
+  .swap-row{ display:flex; justify-content:center; margin:-4px 0; }
+  .swap-btn{
+    width:34px; height:34px; border-radius:50%;
+    background:var(--surface); border:1px solid var(--border); color:var(--text-dim);
+    display:flex; align-items:center; justify-content:center; cursor:pointer;
+    box-shadow:0 4px 10px -4px var(--shadow);
+  }
+  .swap-btn:hover{ color:var(--accent); border-color:var(--accent); }
+  .swap-btn svg{ width:16px; height:16px; }
+
+  /* ---------- Toggle switch ---------- */
+  .switch-row{ display:flex; align-items:center; justify-content:space-between; gap:10px; }
+  .switch-row p{ margin:0; font-size:13px; color:var(--text-dim); line-height:1.4; }
+  .switch{ position:relative; width:42px; height:24px; flex:none; }
+  .switch input{ opacity:0; width:100%; height:100%; position:absolute; margin:0; cursor:pointer; }
+  .switch .track{
+    position:absolute; inset:0; background:var(--surface2); border:1px solid var(--border);
+    border-radius:999px; transition:background .15s;
+  }
+  .switch .thumb{
+    position:absolute; top:2px; left:2px; width:18px; height:18px; border-radius:50%;
+    background:var(--text-dim); transition:transform .15s, background .15s;
+  }
+  .switch input:checked + .track{ background:color-mix(in srgb, var(--accent) 30%, var(--surface2)); border-color:var(--accent); }
+  .switch input:checked + .track + .thumb{ transform:translateX(18px); background:var(--accent); }
+  .switch input:focus-visible + .track{ outline:2px solid var(--accent); outline-offset:2px; }
+
+  .req-body{ margin-top:14px; padding-top:14px; border-top:1px dashed var(--border); }
+  .req-result{
+    margin-top:14px; padding:12px 13px; border-radius:10px;
+    background:var(--surface2); border:1px solid var(--border);
+  }
+  .req-result .v{ font-family:var(--font-mono); font-size:22px; font-weight:600; color:var(--brass); }
+  .req-result .delta{ font-size:12.5px; margin-top:4px; }
+  .req-result .delta.ok{ color:var(--ok); }
+  .req-result .delta.warn{ color:var(--warn); }
+  /* display on :not([hidden]) — this class is now also toggled via the
+     hidden property (fuel/lube/FW warnings), not just inserted/removed via
+     innerHTML, so an unconditional display here would defeat that. */
+  .req-note{ font-size:12px; margin-top:8px; gap:6px; }
+  .req-note:not([hidden]){ display:flex; }
+  .req-note.warn{ color:var(--warn); }
+  .req-note.danger{ color:var(--danger); }
+
+  /* ---------- Consumption ---------- */
+  .consum-info{
+    font-family:var(--font-mono); font-size:12.5px; color:var(--text-dim);
+    background:var(--surface2); border:1px solid var(--border); border-radius:10px;
+    padding:11px 13px;
+  }
+  .consum-info b{ color:var(--brass); }
+
+  /* Compact list header + row: name / ROB / per-day / delete all on one line,
+     with column labels shown once above the list instead of on every row. */
+  .consum-list-head{ display:flex; align-items:center; gap:8px; padding-bottom:7px; }
+  .consum-list-head span{
+    font-size:9.5px; font-weight:600; letter-spacing:0.05em; text-transform:uppercase; color:var(--text-dim);
+  }
+  .col-name{ flex:1.1; min-width:0; }
+  .col-input{ flex:1; min-width:0; }
+  .col-del{ flex:none; width:26px; }
+
+  .consum-row{ padding:9px 0; border-top:1px dashed var(--border); }
+  .consum-row:first-child{ padding-top:0; border-top:none; }
+  .consum-row-line{ display:flex; align-items:center; gap:8px; }
+  .consum-row-line .name{ font-size:12.5px; font-weight:600; line-height:1.25; }
+  .consum-row-line input{ padding:7px 8px; font-size:12.5px; }
+  .consum-del{
+    background:none; border:none; color:var(--text-dim); cursor:pointer;
+    padding:4px; display:flex; align-items:center; justify-content:center; border-radius:6px;
+  }
+  .consum-del:hover{ color:var(--danger); }
+  .consum-del:focus-visible{ outline:2px solid var(--accent); outline-offset:1px; }
+  .consum-del svg{ width:15px; height:15px; }
+  .consum-result{
+    margin-top:8px; display:flex; align-items:center; justify-content:space-between; gap:8px;
+    font-family:var(--font-mono); font-variant-numeric:tabular-nums; font-size:12.5px; color:var(--text-dim);
+  }
+  .consum-result .val{ color:var(--text); }
+  .consum-result .brass-text{ color:var(--brass); font-weight:600; }
+  .text-brass{ color:var(--brass); }
+  .consum-result .danger-text{ color:var(--danger); font-weight:600; }
+  .consum-chip{
+    font-family:var(--font-body); font-size:9.5px; font-weight:700; letter-spacing:0.04em;
+    border-radius:5px; padding:3px 8px; text-transform:uppercase; flex:none;
+  }
+  .consum-chip.ok{ background:color-mix(in srgb, var(--ok) 22%, transparent); color:var(--ok); }
+  .consum-chip.warn{ background:color-mix(in srgb, var(--warn) 22%, transparent); color:var(--warn); }
+  .consum-chip.danger{ background:color-mix(in srgb, var(--danger) 22%, transparent); color:var(--danger); }
+  .consum-chip.pending{ background:var(--surface2); color:var(--text-dim); }
+  .var-table td.danger-cell{ color:var(--danger); font-weight:600; }
+
+  /* ---------- Variance table ---------- */
+  .var-wrap{ margin-top:16px; padding-top:14px; border-top:1px dashed var(--border); overflow-x:auto; }
+  .var-wrap h3{
+    font-family:var(--font-display); font-size:11px; letter-spacing:0.12em; text-transform:uppercase;
+    color:var(--text-dim); margin:0 0 10px; font-weight:600;
+  }
+  table.var-table{ width:100%; border-collapse:collapse; font-family:var(--font-mono); font-size:12.5px; }
+  .var-table th{
+    text-align:left; font-family:var(--font-body); font-weight:600; font-size:10.5px;
+    letter-spacing:0.05em; text-transform:uppercase; color:var(--text-dim);
+    padding:0 8px 7px; white-space:nowrap;
+  }
+  .var-table td{ padding:7px 8px; white-space:nowrap; font-variant-numeric:tabular-nums; border-top:1px solid var(--border); }
+  .var-table tr.planned td{ color:var(--brass); font-weight:600; }
+  .var-table tr.planned{ background:color-mix(in srgb, var(--brass) 8%, transparent); }
+  .chip{
+    font-family:var(--font-body); font-size:9.5px; font-weight:700; letter-spacing:0.04em;
+    background:var(--brass); color:var(--brass-ink); border-radius:5px; padding:2px 5px; margin-left:6px;
+  }
+  /* Switches which arrival port's speed-range table is shown (ETA tab) — only
+     rendered when at least one alternative arrival port exists. */
+  .port-switch{ display:flex; flex-wrap:wrap; gap:6px; margin:-2px 0 12px; }
+  .port-switch-btn{
+    font-family:var(--font-body); font-size:11.5px; font-weight:600;
+    padding:5px 10px; border-radius:999px;
+    border:1px solid var(--border); background:var(--surface2); color:var(--text-dim);
+    cursor:pointer;
+  }
+  .port-switch-btn.active{ background:var(--accent); border-color:var(--accent); color:var(--accent-ink); }
+  .port-switch-btn:focus-visible{ outline:2px solid var(--accent); outline-offset:1px; }
+
+  footer{ padding:6px 20px 4px; }
+  footer p{ font-size:11px; line-height:1.6; color:var(--text-dim); margin:0; }
+
+  /* ---------- Bottom bar ---------- */
+  .bottom-bar{
+    position:fixed; left:0; right:0; bottom:0; z-index:40;
+    display:flex; justify-content:center;
+    background:linear-gradient(0deg, var(--bg) 60%, transparent);
+    padding:14px 16px calc(14px + env(safe-area-inset-bottom));
+    pointer-events:none;
+  }
+  /* Redundant once the result card is always visible in the desktop sidebar
+     (see the .split-grid rules near the top) — this override has to live here,
+     after the base rule above, or the later base rule would win the cascade
+     regardless of the media condition. */
+  @media (min-width: 880px){
+    .bottom-bar{ display:none; }
+  }
+  .bottom-bar-inner{
+    pointer-events:auto;
+    width:100%; max-width:448px;
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:12px; padding:10px 14px;
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    box-shadow:0 10px 28px -8px var(--shadow);
+    cursor:pointer;
+  }
+  .bottom-bar-inner:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
+  .bb-label{ font-size:10px; letter-spacing:0.1em; text-transform:uppercase; color:var(--text-dim); font-family:var(--font-display); }
+  .bb-value{ font-family:var(--font-mono); font-size:15px; font-weight:600; color:var(--brass); font-variant-numeric:tabular-nums; }
+  .bb-arrow{ color:var(--text-dim); flex:none; }
+  .bb-arrow svg{ width:16px; height:16px; }
+
+  /* ---------- History sheet ---------- */
+  /* `display` and `pointer-events` are deliberately kept OFF the base rule below:
+     this element starts with the HTML `hidden` attribute, and an author rule
+     that sets `display` here would override the browser's own `[hidden]{display:
+     none}` rule, leaving an invisible full-screen layer sitting over the whole
+     app and swallowing every click. `:not([hidden])` only supplies `display`
+     once JS has actually removed the attribute. */
+  .sheet-overlay{
+    position:fixed; inset:0; z-index:70;
+    background:rgba(4,10,16,0.55);
+    justify-content:center;
+    opacity:0; transition:opacity .2s;
+    pointer-events:none;
+  }
+  .sheet-overlay:not([hidden]){ display:flex; align-items:flex-end; }
+  .sheet-overlay.open{ opacity:1; pointer-events:auto; }
+  .sheet{
+    width:100%; max-width:480px;
+    max-height:82vh;
+    background:var(--surface);
+    border:1px solid var(--border); border-bottom:none;
+    border-radius:18px 18px 0 0;
+    display:flex; flex-direction:column;
+    transform:translateY(16px);
+    transition:transform .2s;
+    padding:10px 18px calc(16px + env(safe-area-inset-bottom));
+  }
+  .sheet-overlay.open .sheet{ transform:translateY(0); }
+  .sheet-handle{ width:36px; height:4px; border-radius:999px; background:var(--border); margin:2px auto 12px; }
+  .sheet-header{ display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
+  .sheet-header h2{
+    font-family:var(--font-display); font-weight:600; font-size:16px;
+    letter-spacing:0.04em; text-transform:uppercase; margin:0;
+  }
+  .sheet-body{ overflow-y:auto; display:flex; flex-direction:column; gap:10px; }
+  .hist-empty{ color:var(--text-dim); font-size:13.5px; padding:18px 2px; text-align:center; }
+  .hist-row{
+    background:var(--surface2); border:1px solid var(--border); border-radius:12px;
+    padding:11px 13px;
+  }
+  .hist-route{ font-weight:600; font-size:13.5px; }
+  .hist-meta{
+    font-family:var(--font-mono); font-variant-numeric:tabular-nums;
+    font-size:12px; color:var(--text-dim); margin-top:3px;
+  }
+  .hist-saved{ font-size:10.5px; color:var(--text-dim); margin-top:6px; letter-spacing:0.03em; }
+  .hist-actions{ display:flex; gap:8px; margin-top:10px; }
+  .hist-actions .btn{ padding:7px 12px; font-size:12px; }
+  .hist-del{ color:var(--danger); border-color:var(--danger); }
+
+  /* ---------- Toast ---------- */
+  .toast{
+    position:fixed; left:50%; bottom:96px; transform:translate(-50%, 10px);
+    background:var(--text); color:var(--bg);
+    font-size:12.5px; font-weight:600; padding:9px 16px; border-radius:999px;
+    opacity:0; pointer-events:none; transition:opacity .2s, transform .2s;
+    z-index:60; white-space:nowrap;
+  }
+  .toast.show{ opacity:1; transform:translate(-50%, 0); }
+</style>
+
+<div class="app">
+
+  <div class="topbar">
+    <div class="brand">
+      <svg class="brand-mark" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="9.2"></circle>
+        <path d="M12 4.2V7M12 17v2.8M4.2 12H7M17 12h2.8"></path>
+        <path d="M12 12 15.5 8.8" stroke-width="2"></path>
+        <circle cx="12" cy="12" r="1.3" fill="currentColor" stroke="none"></circle>
+      </svg>
+      <div class="brand-text">
+        <h1>ETA Calculator</h1>
+        <p>Voyage arrival planner</p>
+      </div>
+    </div>
+    <div class="topbar-actions">
+      <button class="icon-btn" id="historyBtn" type="button" aria-label="Voyage history">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"></path><path d="M3 4v5h5"></path><path d="M12 8v4l3 2"></path></svg>
+      </button>
+      <button class="theme-toggle" id="themeBtn" type="button" aria-label="Change theme"></button>
+    </div>
+  </div>
+
+  <div class="main-tabs">
+    <button type="button" class="main-tab active" data-tab="eta">ETA</button>
+    <button type="button" class="main-tab" data-tab="consumption">Consumption</button>
+  </div>
+
+  <main>
+
+   <div id="tabPanelEta" class="tab-panel">
+    <div class="split-grid">
+    <div class="split-col-main">
+
+    <!-- DEPARTURE -->
+    <section class="card">
+      <p class="nameplate">Departure <span class="rivet"></span></p>
+      <div class="row-gap">
+        <div class="field-row">
+          <div class="field">
+            <label for="depDate">Date</label>
+            <input type="date" id="depDate">
+          </div>
+          <div class="field">
+            <label for="depTime">Time</label>
+            <input type="time" id="depTime">
+          </div>
+        </div>
+        <button class="btn btn-now" id="nowBtn" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 3"></path></svg>
+          Set to now
+        </button>
+        <div id="depLoc"></div>
+      </div>
+    </section>
+
+    <div class="swap-row">
+      <button class="swap-btn" id="swapBtn" type="button" aria-label="Swap departure and arrival locations">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 10 3 6l4-4"></path><path d="M3 6h13a4 4 0 0 1 4 4v1"></path><path d="M17 14l4 4-4 4"></path><path d="M21 18H8a4 4 0 0 1-4-4v-1"></path></svg>
+      </button>
+    </div>
+
+    <!-- ARRIVAL -->
+    <section class="card">
+      <p class="nameplate">Arrival <span class="rivet"></span></p>
+      <div id="arrLoc"></div>
+      <div class="row-gap" style="margin-top:12px;">
+        <div class="field-row">
+          <div class="field">
+            <label for="dtg">Distance to go (nm)</label>
+            <input type="number" id="dtg" inputmode="decimal" min="0" step="any" placeholder="0.0">
+          </div>
+          <div class="field">
+            <label for="speed">Speed (kn)</label>
+            <input type="number" id="speed" inputmode="decimal" min="0" step="any" placeholder="0.0">
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label for="variance">Speed variance ± (kn)</label>
+            <input type="number" id="variance" inputmode="decimal" min="0" step="any" placeholder="0">
+          </div>
+          <div class="field">
+            <label for="interval">Interval (kn)</label>
+            <input type="number" id="interval" inputmode="decimal" min="0.1" step="any" placeholder="0.5">
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div id="altArrivalsList"></div>
+    <button type="button" class="link-btn" id="addAltArrivalBtn">+ Add alternative arrival port</button>
+
+    <!-- REQUIRED SPEED -->
+    <section class="card">
+      <div class="switch-row">
+        <div>
+          <p class="nameplate" style="margin-bottom:4px;">Required Speed</p>
+          <p>Work backward from a target arrival time.</p>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="reqToggle">
+          <span class="track"></span>
+          <span class="thumb"></span>
+        </label>
+      </div>
+      <div class="req-body" id="reqBody" hidden>
+        <div class="row-gap">
+          <div class="field-row">
+            <div class="field">
+              <label for="reqDate">Required ETA date</label>
+              <input type="date" id="reqDate">
+            </div>
+            <div class="field">
+              <label for="reqTime">Required ETA time</label>
+              <input type="time" id="reqTime">
+            </div>
+          </div>
+          <div class="field">
+            <label for="reqZone">Time entered is local to</label>
+            <select id="reqZone">
+              <option value="arr">Arrival location</option>
+              <option value="dep">Departure location</option>
+              <option value="utc">UTC</option>
+            </select>
+          </div>
+        </div>
+        <div id="reqResult"></div>
+      </div>
+    </section>
+
+    </div>
+    <div class="split-col-side">
+
+    <!-- RESULTS -->
+    <section class="card card--result" id="resultCard">
+      <p class="nameplate">Estimated Time of Arrival <span class="rivet"></span></p>
+      <div id="resultBody"></div>
+    </section>
+
+    </div>
+    </div>
+   </div>
+
+   <div id="tabPanelConsumption" class="tab-panel" hidden>
+    <div class="split-grid">
+    <div class="split-col-main">
+
+    <div class="consum-info" id="consumInfo"></div>
+
+    <div class="field" id="robRefWrap" hidden>
+      <label for="robRefSelect">ROB reference arrival</label>
+      <select id="robRefSelect"></select>
+    </div>
+
+    <div class="consum-grid">
+
+    <!-- FUEL -->
+    <section class="card consum-span2">
+      <p class="nameplate">Bunker Fuel <select class="unit-select" id="fuelUnitSelect" aria-label="Bunker fuel unit"></select></p>
+      <div class="consum-list-head">
+        <span class="col-name"></span><span class="col-input" id="fuelRobLabel">ROB</span><span class="col-input" id="fuelPerDayLabel">Per day</span><span class="col-del"></span>
+      </div>
+      <div id="fuelList"></div>
+      <button type="button" class="link-btn" id="addFuelToggle" style="margin-top:6px;">+ Add fuel type</button>
+      <div class="add-port-form" id="addFuelForm" hidden>
+        <div class="field"><label>Fuel name</label><input type="text" id="newFuelName" placeholder="e.g. Biofuel blend"></div>
+        <div class="btn-row">
+          <button type="button" class="btn" id="newFuelCancel">Cancel</button>
+          <button type="button" class="btn btn-accent" id="newFuelSave">Add</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- FRESH WATER -->
+    <section class="card">
+      <p class="nameplate">Fresh Water <select class="unit-select" id="fwUnitSelect" aria-label="Fresh water unit"></select></p>
+      <div class="consum-row" style="padding-top:0; border-top:none;">
+        <div class="field-row">
+          <div class="field">
+            <label for="fwRob" id="fwRobLabel">ROB</label>
+            <input type="number" id="fwRob" inputmode="decimal" min="0" step="any" placeholder="0.0">
+          </div>
+          <div class="field">
+            <label for="fwCons" id="fwConsLabel">Cons. / day</label>
+            <input type="number" id="fwCons" inputmode="decimal" min="0" step="any" placeholder="0.0">
+          </div>
+          <div class="field">
+            <label for="fwProd" id="fwProdLabel">Prod. / day</label>
+            <input type="number" id="fwProd" inputmode="decimal" min="0" step="any" placeholder="0.0">
+          </div>
+        </div>
+        <div class="consum-result"><span id="fwResultText">—</span><span class="consum-chip pending" id="fwChip">—</span></div>
+        <div class="req-note danger" id="fwWarning" hidden></div>
+      </div>
+    </section>
+
+    <!-- LUBE OIL -->
+    <section class="card">
+      <p class="nameplate">Lube Oil <select class="unit-select" id="lubeUnitSelect" aria-label="Lube oil unit"></select></p>
+      <div class="consum-list-head">
+        <span class="col-name"></span><span class="col-input" id="lubeRobLabel">ROB</span><span class="col-input" id="lubePerDayLabel">Per day</span><span class="col-del"></span>
+      </div>
+      <div id="lubeList"></div>
+      <button type="button" class="link-btn" id="addLubeToggle" style="margin-top:6px;">+ Add lube oil type</button>
+      <div class="add-port-form" id="addLubeForm" hidden>
+        <div class="field"><label>Lube oil name</label><input type="text" id="newLubeName" placeholder="e.g. Stern tube oil"></div>
+        <div class="btn-row">
+          <button type="button" class="btn" id="newLubeCancel">Cancel</button>
+          <button type="button" class="btn btn-accent" id="newLubeSave">Add</button>
+        </div>
+      </div>
+    </section>
+
+    </div>
+    </div>
+    <div class="split-col-side">
+
+    <!-- ROB SUMMARY -->
+    <section class="card card--result" id="robSummaryCard">
+      <p class="nameplate"><span id="robSummaryTitle">ROB Across Speed Range</span> <span class="rivet"></span></p>
+      <div id="fuelSpeedSummary"></div>
+      <div id="fwSpeedSummary"></div>
+      <div id="lubeSpeedSummary"></div>
+    </section>
+
+    </div>
+    </div>
+   </div>
+
+    <div class="btn-row" style="margin-top:14px;">
+      <button class="btn" id="historySaveBtn" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V3a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>
+        Save to history
+      </button>
+      <button class="btn btn-accent" id="copyBtn" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+        Copy report
+      </button>
+    </div>
+
+  </main>
+
+  <footer>
+    <p>Planning aid only — port time zones and positions are approximate. Cross-check against official charts, tide tables and the passage plan before making navigational decisions.</p>
+  </footer>
+
+</div>
+
+<div class="bottom-bar">
+  <div class="bottom-bar-inner" id="bottomBar" role="button" tabindex="0" aria-label="Jump to ETA">
+    <div>
+      <div class="bb-label" id="bbLabel">ETA</div>
+      <div class="bb-value" id="bbValue">— enter voyage details —</div>
+    </div>
+    <div class="bb-arrow">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"></path><path d="m5 12 7-7 7 7"></path></svg>
+    </div>
+  </div>
+</div>
+
+<div class="sheet-overlay" id="historyOverlay" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-label="Voyage history">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <h2>Voyage History</h2>
+      <button class="icon-btn" id="historyCloseBtn" type="button" aria-label="Close history">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"></path></svg>
+      </button>
+    </div>
+    <div class="sheet-body" id="historyList"></div>
+    <button class="btn" id="historyClearBtn" type="button" style="margin-top:12px;">Clear history</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ---------------- Zoned-time engine ----------------
+     A small drop-in replacement for the subset of Luxon's DateTime API used
+     below (utc/now/local/fromISO, and instance .setZone/.toUTC/.plus/.diff/
+     .toFormat/.toISO/.isValid/.offset), built only on the browser's native
+     Date and Intl — no external script to load, so nothing here can fail
+     because a CDN request timed out on a slow satellite link. */
+  const DT = (function(){
+    const MONTHS_SHORT = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
+    // Offset (minutes, east positive) of `zone` at the instant `epochMs`.
+    // `zone` is either an IANA name ("Asia/Singapore") or one of this app's
+    // own fixed-offset strings ("UTC", "UTC+5:30", "UTC-3", ...).
+    function offsetMinutesForZone(zone, epochMs){
+      if(zone === "UTC") return 0;
+      const fixed = /^UTC([+-])(\d{1,2})(?::(\d{2}))?$/.exec(zone);
+      if(fixed){
+        const sign = fixed[1] === "-" ? -1 : 1;
+        const h = parseInt(fixed[2],10), m = fixed[3] ? parseInt(fixed[3],10) : 0;
+        return sign * (h*60 + m);
+      }
+      try{
+        const dtf = new Intl.DateTimeFormat("en-US", {
+          timeZone: zone, hourCycle:"h23",
+          year:"numeric", month:"2-digit", day:"2-digit",
+          hour:"2-digit", minute:"2-digit", second:"2-digit"
+        });
+        const raw = {};
+        dtf.formatToParts(new Date(epochMs)).forEach(p => { if(p.type !== "literal") raw[p.type] = p.value; });
+        let hour = parseInt(raw.hour,10); if(hour===24) hour = 0;
+        const asUTC = Date.UTC(parseInt(raw.year,10), parseInt(raw.month,10)-1, parseInt(raw.day,10), hour, parseInt(raw.minute,10), parseInt(raw.second,10));
+        return Math.round((asUTC - epochMs)/60000);
+      }catch(e){ return 0; }
+    }
+
+    // Calendar/clock fields of `epochMs` as displayed in `zone`.
+    function partsFor(epochMs, zone){
+      if(zone === "UTC" || /^UTC[+-]/.test(zone)){
+        const off = offsetMinutesForZone(zone, epochMs);
+        const d = new Date(epochMs + off*60000);
+        return {year:d.getUTCFullYear(), month:d.getUTCMonth()+1, day:d.getUTCDate(), hour:d.getUTCHours(), minute:d.getUTCMinutes()};
+      }
+      try{
+        const dtf = new Intl.DateTimeFormat("en-US", {
+          timeZone: zone, hourCycle:"h23",
+          year:"numeric", month:"2-digit", day:"2-digit",
+          hour:"2-digit", minute:"2-digit"
+        });
+        const raw = {};
+        dtf.formatToParts(new Date(epochMs)).forEach(p => { if(p.type !== "literal") raw[p.type] = p.value; });
+        let hour = parseInt(raw.hour,10); if(hour===24) hour = 0;
+        return {year:parseInt(raw.year,10), month:parseInt(raw.month,10), day:parseInt(raw.day,10), hour, minute:parseInt(raw.minute,10)};
+      }catch(e){
+        const d = new Date(epochMs);
+        return {year:d.getUTCFullYear(), month:d.getUTCMonth()+1, day:d.getUTCDate(), hour:d.getUTCHours(), minute:d.getUTCMinutes()};
+      }
+    }
+
+    function pad2(n){ return String(n).padStart(2,"0"); }
+
+    function makeZT(epochMs, zone, valid){
+      return {
+        epochMs, zone, isValid: valid !== false && isFinite(epochMs),
+        setZone(z){ return makeZT(this.epochMs, z, this.isValid); },
+        toUTC(){ return makeZT(this.epochMs, "UTC", this.isValid); },
+        plus(obj){ return makeZT(this.epochMs + (obj.hours||0)*3600000, this.zone, this.isValid); },
+        diff(other){ return {hours: (this.epochMs - other.epochMs)/3600000}; },
+        get offset(){ return offsetMinutesForZone(this.zone, this.epochMs); },
+        toFormat(pattern){
+          const p = partsFor(this.epochMs, this.zone);
+          return pattern.replace(/yyyy|LLL|LL|dd|HH|mm/g, tok => {
+            if(tok==="yyyy") return String(p.year);
+            if(tok==="LLL") return MONTHS_SHORT[p.month-1];
+            if(tok==="LL") return pad2(p.month);
+            if(tok==="dd") return pad2(p.day);
+            if(tok==="HH") return pad2(p.hour);
+            if(tok==="mm") return pad2(p.minute);
+            return tok;
+          });
+        },
+        toISO(){ return isFinite(this.epochMs) ? new Date(this.epochMs).toISOString() : null; }
+      };
+    }
+
+    // Wall-clock (y, mo, d, h, mi) as read in `zone` -> the UTC instant it refers to.
+    function fromWall(y, mo, d, h, mi, zone){
+      if([y,mo,d,h,mi].some(v => v==null || isNaN(v))) return makeZT(NaN, zone, false);
+      const guess = Date.UTC(y, mo-1, d, h, mi, 0);
+      const off1 = offsetMinutesForZone(zone, guess);
+      let epoch = guess - off1*60000;
+      const off2 = offsetMinutesForZone(zone, epoch);
+      if(off2 !== off1) epoch = guess - off2*60000; // refine once across a DST edge
+      return makeZT(epoch, zone, true);
+    }
+
+    return {
+      utc(){ return makeZT(Date.now(), "UTC", true); },
+      now(){ return makeZT(Date.now(), "UTC", true); },
+      local(){
+        let z = "UTC";
+        try{ z = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"; }catch(e){}
+        return makeZT(Date.now(), z, true);
+      },
+      // fromISO(str) parses a full UTC instant (as produced by toISO() below).
+      // fromISO(str, {zone}) parses a "YYYY-MM-DDTHH:mm" wall-clock string as
+      // local time in `zone` (mirrors how this file used Luxon's fromISO).
+      fromISO(str, opts){
+        if(opts && opts.zone){
+          const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(str || "");
+          if(!m) return makeZT(NaN, opts.zone, false);
+          return fromWall(+m[1], +m[2], +m[3], +m[4], +m[5], opts.zone);
+        }
+        const ms = Date.parse(str);
+        return makeZT(ms, "UTC", isFinite(ms));
+      }
+    };
+  })();
+
+  /* ---------------- Port data: [name, country, lat, lon, IANA tz] ---------------- */
+  const PORTS = [
+    ["Rotterdam","Netherlands",51.9225,4.4792,"Europe/Amsterdam"],
+    ["Antwerp","Belgium",51.2194,4.4025,"Europe/Brussels"],
+    ["Hamburg","Germany",53.5511,9.9937,"Europe/Berlin"],
+    ["Bremerhaven","Germany",53.5396,8.5809,"Europe/Berlin"],
+    ["Felixstowe","United Kingdom",51.9539,1.3518,"Europe/London"],
+    ["Southampton","United Kingdom",50.9097,-1.4044,"Europe/London"],
+    ["London Gateway","United Kingdom",51.5074,0.4085,"Europe/London"],
+    ["Le Havre","France",49.4944,0.1079,"Europe/Paris"],
+    ["Marseille","France",43.2965,5.3698,"Europe/Paris"],
+    ["Barcelona","Spain",41.3851,2.1734,"Europe/Madrid"],
+    ["Valencia","Spain",39.4699,-0.3763,"Europe/Madrid"],
+    ["Algeciras","Spain",36.1408,-5.4526,"Europe/Madrid"],
+    ["Gibraltar","Gibraltar",36.1408,-5.3536,"Europe/Gibraltar"],
+    ["Las Palmas","Spain (Canary Is.)",28.1235,-15.4363,"Atlantic/Canary"],
+    ["Genoa","Italy",44.4056,8.9463,"Europe/Rome"],
+    ["Gioia Tauro","Italy",38.4244,15.8997,"Europe/Rome"],
+    ["Valletta","Malta",35.8989,14.5146,"Europe/Malta"],
+    ["Piraeus","Greece",37.9475,23.6367,"Europe/Athens"],
+    ["Istanbul (Ambarli)","Turkey",40.9667,28.7167,"Europe/Istanbul"],
+    ["Gdansk","Poland",54.3520,18.6466,"Europe/Warsaw"],
+    ["Gothenburg","Sweden",57.7089,11.9746,"Europe/Stockholm"],
+    ["St. Petersburg","Russia",59.9311,30.3609,"Europe/Moscow"],
+    ["Lisbon","Portugal",38.7223,-9.1393,"Europe/Lisbon"],
+    ["Jebel Ali (Dubai)","UAE",25.0118,55.0618,"Asia/Dubai"],
+    ["Fujairah","UAE",25.1288,56.3265,"Asia/Dubai"],
+    ["Abu Dhabi","UAE",24.4539,54.3773,"Asia/Dubai"],
+    ["Jeddah","Saudi Arabia",21.4858,39.1925,"Asia/Riyadh"],
+    ["Dammam","Saudi Arabia",26.4207,50.0888,"Asia/Riyadh"],
+    ["Salalah","Oman",17.0151,54.0924,"Asia/Muscat"],
+    ["Aden","Yemen",12.7855,45.0187,"Asia/Aden"],
+    ["Djibouti","Djibouti",11.5883,43.1450,"Africa/Djibouti"],
+    ["Port Said","Egypt",31.2653,32.3019,"Africa/Cairo"],
+    ["Suez","Egypt",29.9668,32.5498,"Africa/Cairo"],
+    ["Alexandria","Egypt",31.2001,29.9187,"Africa/Cairo"],
+    ["Durban","South Africa",-29.8587,31.0218,"Africa/Johannesburg"],
+    ["Cape Town","South Africa",-33.9249,18.4241,"Africa/Johannesburg"],
+    ["Walvis Bay","Namibia",-22.9576,14.5053,"Africa/Windhoek"],
+    ["Lagos","Nigeria",6.5244,3.3792,"Africa/Lagos"],
+    ["Mombasa","Kenya",-4.0435,39.6682,"Africa/Nairobi"],
+    ["Port Louis","Mauritius",-20.1609,57.5012,"Indian/Mauritius"],
+    ["Tanger Med","Morocco",35.8845,-5.5000,"Africa/Casablanca"],
+    ["Singapore","Singapore",1.2644,103.8200,"Asia/Singapore"],
+    ["Shanghai","China",31.2304,121.4737,"Asia/Shanghai"],
+    ["Ningbo-Zhoushan","China",29.8683,121.5440,"Asia/Shanghai"],
+    ["Shenzhen","China",22.5431,114.0579,"Asia/Shanghai"],
+    ["Guangzhou","China",23.1291,113.2644,"Asia/Shanghai"],
+    ["Qingdao","China",36.0671,120.3826,"Asia/Shanghai"],
+    ["Tianjin","China",39.0842,117.2009,"Asia/Shanghai"],
+    ["Hong Kong","China",22.3193,114.1694,"Asia/Hong_Kong"],
+    ["Kaohsiung","Taiwan",22.6163,120.3133,"Asia/Taipei"],
+    ["Busan","South Korea",35.1796,129.0756,"Asia/Seoul"],
+    ["Tokyo","Japan",35.6762,139.6503,"Asia/Tokyo"],
+    ["Yokohama","Japan",35.4437,139.6380,"Asia/Tokyo"],
+    ["Nagoya","Japan",35.1815,136.9066,"Asia/Tokyo"],
+    ["Kobe","Japan",34.6901,135.1955,"Asia/Tokyo"],
+    ["Port Klang","Malaysia",3.0044,101.3930,"Asia/Kuala_Lumpur"],
+    ["Tanjung Pelepas","Malaysia",1.3667,103.5500,"Asia/Kuala_Lumpur"],
+    ["Laem Chabang","Thailand",13.0827,100.8833,"Asia/Bangkok"],
+    ["Ho Chi Minh City","Vietnam",10.7626,106.6602,"Asia/Ho_Chi_Minh"],
+    ["Haiphong","Vietnam",20.8449,106.6881,"Asia/Ho_Chi_Minh"],
+    ["Manila","Philippines",14.5995,120.9842,"Asia/Manila"],
+    ["Jakarta","Indonesia",-6.1045,106.8865,"Asia/Jakarta"],
+    ["Surabaya","Indonesia",-7.2115,112.7378,"Asia/Jakarta"],
+    ["Colombo","Sri Lanka",6.9271,79.8612,"Asia/Colombo"],
+    ["Mumbai (JNPT)","India",18.9490,72.9525,"Asia/Kolkata"],
+    ["Chennai","India",13.0827,80.2707,"Asia/Kolkata"],
+    ["Kolkata","India",22.5726,88.3639,"Asia/Kolkata"],
+    ["Karachi","Pakistan",24.8607,66.9750,"Asia/Karachi"],
+    ["Sydney","Australia",-33.8688,151.2093,"Australia/Sydney"],
+    ["Melbourne","Australia",-37.8136,144.9631,"Australia/Melbourne"],
+    ["Brisbane","Australia",-27.4698,153.0251,"Australia/Brisbane"],
+    ["Fremantle","Australia",-32.0569,115.7439,"Australia/Perth"],
+    ["Auckland","New Zealand",-36.8485,174.7633,"Pacific/Auckland"],
+    ["Los Angeles","United States",33.7405,-118.2668,"America/Los_Angeles"],
+    ["Long Beach","United States",33.7542,-118.2165,"America/Los_Angeles"],
+    ["Oakland","United States",37.7955,-122.2790,"America/Los_Angeles"],
+    ["Seattle","United States",47.6062,-122.3321,"America/Los_Angeles"],
+    ["Tacoma","United States",47.2529,-122.4443,"America/Los_Angeles"],
+    ["New York / New Jersey","United States",40.6692,-74.0445,"America/New_York"],
+    ["Savannah","United States",32.0809,-81.0912,"America/New_York"],
+    ["Charleston","United States",32.7765,-79.9311,"America/New_York"],
+    ["Miami","United States",25.7742,-80.1770,"America/New_York"],
+    ["Houston","United States",29.7355,-95.0150,"America/Chicago"],
+    ["New Orleans","United States",29.9448,-90.0703,"America/Chicago"],
+    ["Vancouver","Canada",49.2926,-123.1150,"America/Vancouver"],
+    ["Montreal","Canada",45.5501,-73.5407,"America/Toronto"],
+    ["Halifax","Canada",44.6488,-63.5752,"America/Halifax"],
+    ["Manzanillo","Mexico",19.0546,-104.3208,"America/Mexico_City"],
+    ["Balboa","Panama",8.9500,-79.5667,"America/Panama"],
+    ["Colon","Panama",9.3547,-79.9014,"America/Panama"],
+    ["Santos","Brazil",-23.9608,-46.3339,"America/Sao_Paulo"],
+    ["Rio de Janeiro","Brazil",-22.9068,-43.1729,"America/Sao_Paulo"],
+    ["Buenos Aires","Argentina",-34.6037,-58.3816,"America/Argentina/Buenos_Aires"],
+    ["Valparaiso","Chile",-33.0472,-71.6127,"America/Santiago"],
+    ["Callao","Peru",-12.0566,-77.1181,"America/Lima"],
+    ["Cartagena","Colombia",10.3910,-75.4794,"America/Bogota"],
+    ["Guayaquil","Ecuador",-2.1894,-79.8891,"America/Guayaquil"]
+  ].map(p => ({name:p[0], country:p[1], lat:p[2], lon:p[3], tz:p[4]}));
+
+  /* ---------------- Custom (user-added) ports ---------------- */
+  const CUSTOM_PORTS_KEY = "bridge-eta-custom-ports-v1";
+  function loadCustomPorts(){
+    try{
+      const raw = localStorage.getItem(CUSTOM_PORTS_KEY);
+      const arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr : [];
+    }catch(e){ return []; }
+  }
+  function saveCustomPorts(){
+    try{ localStorage.setItem(CUSTOM_PORTS_KEY, JSON.stringify(customPorts)); }catch(e){}
+  }
+  let customPorts = loadCustomPorts();
+  let PORTS_ALL = PORTS.concat(customPorts);
+  // Adds a user-entered port (name + optional country + a UTC-offset "zone" string
+  // such as "UTC+5:30") and returns its index in PORTS_ALL.
+  function addCustomPort(name, country, tz){
+    customPorts.push({name, country, tz, custom:true});
+    saveCustomPorts();
+    PORTS_ALL = PORTS.concat(customPorts);
+    return PORTS_ALL.length - 1;
+  }
+
+  /* ---------------- State ---------------- */
+  // Manual positions are stored as degrees + decimal minutes (the format used
+  // on GPS/chart plotters), not decimal degrees, to match how they're entered.
+  const defaultLoc = () => ({mode:"port", portIndex:null, latD:null, latM:null, latHem:"N", lonD:null, lonM:null, lonHem:"E", tzOverride:null});
+
+  function newItemId(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
+  const defaultFuels = () => [
+    {id:"hsfo", name:"HSFO", rob:"", perDay:"", removable:true},
+    {id:"vlsfo", name:"VLSFO", rob:"", perDay:"", removable:true},
+    {id:"lsfo", name:"LSFO", rob:"", perDay:"", removable:true},
+    {id:"lsmgo", name:"LSMGO", rob:"", perDay:"", removable:true},
+    {id:"lsdo", name:"LSDO", rob:"", perDay:"", removable:true},
+    {id:"mdo", name:"MDO", rob:"", perDay:"", removable:true}
+  ];
+  const defaultLubeOils = () => [
+    {id:"mecyl", name:"M/E Cylinder Oil", rob:"", perDay:"", removable:true},
+    {id:"mesys", name:"M/E System Oil", rob:"", perDay:"", removable:true},
+    {id:"aesys", name:"A/E System Oil", rob:"", perDay:"", removable:true}
+  ];
+  // Units are chosen per section (all fuel grades share one unit, all lube
+  // oils share another) rather than per item — that matches how a ship
+  // actually tracks these (one convention per log/report), and avoids
+  // silently mixing mass and volume units within the same table.
+  const UNIT_OPTIONS = ["MT","t","kL","L","m³","bbl","gal"];
+  const defaultConsumption = () => ({
+    fuels: defaultFuels(),
+    freshWater: {rob:"", consPerDay:"", prodPerDay:"", unit:"m³"},
+    lubeOils: defaultLubeOils(),
+    units: {fuels:"MT", lubeOils:"L"}
+  });
+
+  // An alternative arrival port shares the departure position/time with the
+  // primary voyage; its own destination, distance and speed are independent,
+  // though speed starts "linked" to the primary Speed field until the user
+  // edits this port's speed directly.
+  const defaultAltArrival = () => ({id: newItemId(), arr: defaultLoc(), distance: "", speed: state.speed, speedLinked: true});
+
+  let state = {
+    theme: "system",
+    dateStr: "", timeStr: "",
+    dep: defaultLoc(),
+    arr: defaultLoc(),
+    altArrivals: [],
+    distance: "", speed: "", variance: "2", interval: "0.5",
+    reqEnabled: false, reqDate: "", reqTime: "", reqZone: "arr",
+    consumption: defaultConsumption(),
+    robReferencePort: "primary",
+    etaSpeedRangePort: "primary"
+  };
+
+  const STORE_KEY = "bridge-eta-state-v1";
+  function saveState(){
+    try{ localStorage.setItem(STORE_KEY, JSON.stringify(state)); }catch(e){}
+  }
+  // Re-validates/defaults a saved (or history-restored) altArrivals array:
+  // re-checks each port's portIndex against the current port list, and fills
+  // in id/distance/speed/speedLinked for entries saved before this feature
+  // existed. Shared by loadState() and loadHistoryEntry() so both paths stay
+  // consistent — history entries never went through this before.
+  function normalizeAltArrivals(rawArr, fallbackSpeed){
+    return Array.isArray(rawArr) ? rawArr.map(a => {
+      const arr = Object.assign(defaultLoc(), a.arr||{});
+      if(arr.portIndex!=null && !PORTS_ALL[arr.portIndex]) arr.portIndex=null;
+      return {
+        id: a.id || newItemId(),
+        arr,
+        distance: a.distance || "",
+        speed: a.speed != null ? a.speed : fallbackSpeed,
+        speedLinked: a.speedLinked != null ? a.speedLinked : true
+      };
+    }) : [];
+  }
+  function loadState(){
+    try{
+      const raw = localStorage.getItem(STORE_KEY);
+      if(!raw) return;
+      const parsed = JSON.parse(raw);
+      state = Object.assign(state, parsed);
+      state.dep = Object.assign(defaultLoc(), parsed.dep||{});
+      state.arr = Object.assign(defaultLoc(), parsed.arr||{});
+      if(state.dep.portIndex!=null && !PORTS_ALL[state.dep.portIndex]) state.dep.portIndex=null;
+      if(state.arr.portIndex!=null && !PORTS_ALL[state.arr.portIndex]) state.arr.portIndex=null;
+      state.altArrivals = normalizeAltArrivals(parsed.altArrivals, state.speed);
+      state.robReferencePort = parsed.robReferencePort || "primary";
+      state.etaSpeedRangePort = parsed.etaSpeedRangePort || "primary";
+      const pc = parsed.consumption || {};
+      state.consumption = {
+        fuels: Array.isArray(pc.fuels) ? pc.fuels : defaultFuels(),
+        freshWater: Object.assign({rob:"", consPerDay:"", prodPerDay:"", unit:"m³"}, pc.freshWater||{}),
+        lubeOils: Array.isArray(pc.lubeOils) ? pc.lubeOils : defaultLubeOils(),
+        units: Object.assign({fuels:"MT", lubeOils:"L"}, pc.units||{})
+      };
+    }catch(e){}
+  }
+
+  /* ---------------- Theme ---------------- */
+  const THEME_KEY = "bridge-eta-theme";
+  const themeBtn = document.getElementById("themeBtn");
+  const themeIcons = {
+    system: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="14" rx="2"></rect><path d="M8 21h8M12 18v3"></path></svg>',
+    light: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4.5"></circle><path d="M12 2.5v2M12 19.5v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M2.5 12h2M19.5 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"></path></svg>',
+    dark: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a6.8 6.8 0 0 0 10.5 10.5Z"></path></svg>'
+  };
+  const themeLabels = {system:"System", light:"Light", dark:"Dark"};
+  function applyTheme(){
+    if(state.theme==="system") document.documentElement.removeAttribute("data-theme");
+    else document.documentElement.setAttribute("data-theme", state.theme);
+    themeBtn.innerHTML = themeIcons[state.theme] + "<span>"+themeLabels[state.theme]+"</span>";
+  }
+  themeBtn.addEventListener("click", () => {
+    state.theme = state.theme==="system" ? "light" : state.theme==="light" ? "dark" : "system";
+    applyTheme();
+    try{ localStorage.setItem(THEME_KEY, state.theme); }catch(e){}
+  });
+
+  /* ---------------- Helpers ---------------- */
+  function clamp(v,lo,hi){ return Math.max(lo, Math.min(hi, v)); }
+  function portLabel(p){ return p.country ? p.name+", "+p.country : p.name; }
+
+  function fmtOffsetMinutes(mins){
+    const sign = mins < 0 ? "-" : "+";
+    const abs = Math.abs(mins);
+    const h = Math.floor(abs/60), m = abs%60;
+    return "UTC" + sign + h + (m ? ":" + String(m).padStart(2,"0") : "");
+  }
+
+  // Every half-hour UTC offset from -12:00 to +14:00, for manual time-zone entry/override.
+  const OFFSET_OPTIONS = (function(){
+    const out = [];
+    for(let m=-720; m<=840; m+=30) out.push(fmtOffsetMinutes(m));
+    return out;
+  })();
+  function fillOffsetSelect(selectEl, includeAuto, selected){
+    selectEl.innerHTML = "";
+    if(includeAuto){
+      const opt = document.createElement("option");
+      opt.value = ""; opt.textContent = "Auto (from location)";
+      selectEl.appendChild(opt);
+    }
+    OFFSET_OPTIONS.forEach(v => {
+      const opt = document.createElement("option");
+      opt.value = v; opt.textContent = v;
+      selectEl.appendChild(opt);
+    });
+    selectEl.value = selected || "";
+  }
+
+  // "10°30.00'N 65°15.00'E" — degrees + decimal minutes, matching how it's entered.
+  function formatLatLong(latD, latM, latHem, lonD, lonM, lonHem){
+    return latD+"°"+latM.toFixed(2)+"'"+latHem+" "+lonD+"°"+lonM.toFixed(2)+"'"+lonHem;
+  }
+
+  // Returns {zone, label, kind, lat, lon, overridden} or null
+  function getZoneInfo(loc){
+    let auto = null;
+    if(loc.mode === "port"){
+      if(loc.portIndex!=null){
+        const p = PORTS_ALL[loc.portIndex];
+        if(p) auto = {zone:p.tz, label:portLabel(p), kind:"port", lat:p.lat, lon:p.lon};
+      }
+    } else if(loc.latD!=null && loc.latM!=null && loc.lonD!=null && loc.lonM!=null
+        && !isNaN(loc.latD) && !isNaN(loc.latM) && !isNaN(loc.lonD) && !isNaN(loc.lonM)){
+      const latDecimal = loc.latD + loc.latM/60;
+      const lonDecimal = loc.lonD + loc.lonM/60;
+      const signedLat = loc.latHem==="S" ? -latDecimal : latDecimal;
+      const signedLon = loc.lonHem==="W" ? -lonDecimal : lonDecimal;
+      let offset = Math.round(signedLon/15);
+      offset = clamp(offset, -12, 12);
+      const zone = offset===0 ? "UTC" : "UTC"+(offset>0?"+":"")+offset;
+      const label = formatLatLong(loc.latD, loc.latM, loc.latHem, loc.lonD, loc.lonM, loc.lonHem);
+      auto = {zone, label, kind:"manual", lat:signedLat, lon:signedLon};
+    }
+    if(!auto) return null;
+    if(loc.tzOverride){
+      return {zone: loc.tzOverride, label: auto.label, kind: auto.kind, lat: auto.lat, lon: auto.lon, overridden:true};
+    }
+    return auto;
+  }
+
+  function zoneOffsetLabel(zoneInfo, atUTC){
+    if(zoneInfo.kind==="manual" || zoneInfo.overridden) return zoneInfo.zone;
+    const dt = atUTC.setZone(zoneInfo.zone);
+    return fmtOffsetMinutes(dt.offset);
+  }
+
+  function tzBadgeHTML(zoneInfo){
+    if(!zoneInfo) return '<span class="tz-badge muted"><span class="dot"></span>Select a location</span>';
+    const now = DT.utc();
+    const off = zoneOffsetLabel(zoneInfo, now);
+    let name;
+    if(zoneInfo.overridden) name = "Manual override";
+    else if(zoneInfo.kind==="port" && zoneInfo.zone.indexOf("/")>-1) name = zoneInfo.zone.split("/").pop().replace(/_/g," ");
+    else if(zoneInfo.kind==="port"){
+      // user-added port stored as a fixed UTC offset (no IANA zone) — show its country instead of repeating the offset
+      const parts = zoneInfo.label.split(", ");
+      name = parts.length>1 ? parts.slice(1).join(", ") : "Custom port";
+    }
+    else name = zoneInfo.label; // manual lat/long: show the actual position, not a generic label
+    const cls = zoneInfo.overridden ? "tz-badge edited" : "tz-badge";
+    return '<span class="'+cls+'"><span class="dot"></span>'+name+' &middot; '+off+'</span>';
+  }
+
+  /* ---------------- Location block (departure / arrival) ---------------- */
+  function renderLocationBlock(container, loc, onChange){
+    container.innerHTML =
+      '<div class="loc-tabs">'+
+        '<button type="button" class="loc-tab" data-mode="port">Port</button>'+
+        '<button type="button" class="loc-tab" data-mode="manual">Lat / Long</button>'+
+      '</div>'+
+      '<div class="loc-port">'+
+        '<div class="combo">'+
+          '<input type="text" class="combo-input" placeholder="Search port or country&hellip;" autocomplete="off">'+
+          '<div class="combo-list" hidden></div>'+
+        '</div>'+
+        '<button type="button" class="link-btn add-port-toggle">+ Add a port manually</button>'+
+        '<div class="add-port-form" hidden>'+
+          '<div class="field-row">'+
+            '<div class="field"><label>Port name</label><input type="text" class="new-port-name" placeholder="Port name"></div>'+
+            '<div class="field"><label>Country</label><input type="text" class="new-port-country" placeholder="Optional"></div>'+
+          '</div>'+
+          '<div class="field"><label>Time zone (UTC offset)</label><select class="new-port-offset"></select></div>'+
+          '<div class="btn-row">'+
+            '<button type="button" class="btn new-port-cancel">Cancel</button>'+
+            '<button type="button" class="btn btn-accent new-port-save">Save &amp; select</button>'+
+          '</div>'+
+        '</div>'+
+      '</div>'+
+      '<div class="loc-manual" hidden>'+
+        '<div class="row-gap">'+
+          '<div class="field"><label>Latitude (deg, min)</label><div class="deg-input">'+
+            '<input type="number" class="lat-deg" inputmode="numeric" min="0" max="90" step="1" placeholder="DD">'+
+            '<input type="number" class="lat-min" inputmode="decimal" min="0" max="59.999" step="any" placeholder="MM.mmm">'+
+            '<select class="lat-hem"><option value="N">N</option><option value="S">S</option></select>'+
+          '</div></div>'+
+          '<div class="field"><label>Longitude (deg, min)</label><div class="deg-input">'+
+            '<input type="number" class="lon-deg" inputmode="numeric" min="0" max="180" step="1" placeholder="DDD">'+
+            '<input type="number" class="lon-min" inputmode="decimal" min="0" max="59.999" step="any" placeholder="MM.mmm">'+
+            '<select class="lon-hem"><option value="E">E</option><option value="W">W</option></select>'+
+          '</div></div>'+
+        '</div>'+
+      '</div>'+
+      '<div class="tz-section">'+
+        '<div class="tz-badge-slot"></div>'+
+        '<button type="button" class="link-btn tz-edit-toggle" hidden>Edit time zone</button>'+
+        '<div class="tz-override-row" hidden><select class="tz-override-select"></select></div>'+
+      '</div>';
+
+    const tabs = container.querySelectorAll(".loc-tab");
+    const portBlock = container.querySelector(".loc-port");
+    const manualBlock = container.querySelector(".loc-manual");
+    const comboInput = container.querySelector(".combo-input");
+    const comboList = container.querySelector(".combo-list");
+    const latDegEl = container.querySelector(".lat-deg");
+    const latMinEl = container.querySelector(".lat-min");
+    const latHem = container.querySelector(".lat-hem");
+    const lonDegEl = container.querySelector(".lon-deg");
+    const lonMinEl = container.querySelector(".lon-min");
+    const lonHem = container.querySelector(".lon-hem");
+    const badgeSlot = container.querySelector(".tz-badge-slot");
+    const addPortToggle = container.querySelector(".add-port-toggle");
+    const addPortForm = container.querySelector(".add-port-form");
+    const newPortName = container.querySelector(".new-port-name");
+    const newPortCountry = container.querySelector(".new-port-country");
+    const newPortOffset = container.querySelector(".new-port-offset");
+    const newPortSave = container.querySelector(".new-port-save");
+    const newPortCancel = container.querySelector(".new-port-cancel");
+    const tzEditToggle = container.querySelector(".tz-edit-toggle");
+    const tzOverrideRow = container.querySelector(".tz-override-row");
+    const tzOverrideSelect = container.querySelector(".tz-override-select");
+
+    fillOffsetSelect(newPortOffset, false, "UTC");
+    fillOffsetSelect(tzOverrideSelect, true, loc.tzOverride);
+    let tzEditOpen = false;
+
+    function refreshTabs(){
+      tabs.forEach(t => t.classList.toggle("active", t.dataset.mode===loc.mode));
+      portBlock.hidden = loc.mode!=="port";
+      manualBlock.hidden = loc.mode!=="manual";
+    }
+    function hasBaseLocation(){
+      return loc.mode==="port" ? loc.portIndex!=null : (loc.latD!=null && loc.latM!=null && loc.lonD!=null && loc.lonM!=null);
+    }
+    function refreshBadge(){
+      badgeSlot.innerHTML = tzBadgeHTML(getZoneInfo(loc));
+      const has = hasBaseLocation();
+      if(!has) tzEditOpen = false;
+      tzEditToggle.hidden = !has;
+      tzOverrideRow.hidden = !tzEditOpen;
+      tzEditToggle.textContent = tzEditOpen ? "Hide time zone editor" : "Edit time zone";
+      tzOverrideSelect.value = loc.tzOverride || "";
+    }
+    function refreshComboText(){
+      if(loc.mode==="port" && loc.portIndex!=null){
+        const p = PORTS_ALL[loc.portIndex];
+        if(p) comboInput.value = portLabel(p);
+      }
+    }
+    function refreshManualInputs(){
+      latDegEl.value = loc.latD!=null ? loc.latD : "";
+      latMinEl.value = loc.latM!=null ? loc.latM : "";
+      latHem.value = loc.latHem;
+      lonDegEl.value = loc.lonD!=null ? loc.lonD : "";
+      lonMinEl.value = loc.lonM!=null ? loc.lonM : "";
+      lonHem.value = loc.lonHem;
+    }
+
+    tabs.forEach(t => t.addEventListener("click", () => {
+      if(loc.mode === t.dataset.mode) return;
+      loc.mode = t.dataset.mode;
+      loc.tzOverride = null;
+      addPortForm.hidden = true;
+      refreshTabs(); refreshBadge(); onChange();
+    }));
+
+    function closeList(){ comboList.hidden = true; }
+
+    comboInput.addEventListener("input", () => {
+      const q = comboInput.value.trim().toLowerCase();
+      loc.portIndex = null;
+      if(q.length===0){ closeList(); refreshBadge(); onChange(); return; }
+      const matches = PORTS_ALL
+        .map((p,i)=>({p,i}))
+        .filter(x => x.p.name.toLowerCase().includes(q) || x.p.country.toLowerCase().includes(q))
+        .slice(0,8);
+      comboList.innerHTML = "";
+      if(matches.length===0){
+        comboList.innerHTML = '<div class="combo-empty">No match &mdash; try Lat / Long, or add it as a new port below</div>';
+      } else {
+        matches.forEach(({p,i}) => {
+          const item = document.createElement("div");
+          item.className = "combo-item";
+          item.innerHTML = '<span class="pname">'+portLabel(p)+'</span><span class="ptz">'+p.tz.split("/").pop().replace(/_/g," ")+'</span>';
+          item.addEventListener("click", () => {
+            loc.portIndex = i;
+            loc.tzOverride = null;
+            comboInput.value = portLabel(p);
+            closeList();
+            refreshBadge();
+            onChange();
+          });
+          comboList.appendChild(item);
+        });
+      }
+      comboList.hidden = false;
+      refreshBadge();
+      onChange();
+    });
+    comboInput.addEventListener("focus", () => { if(comboInput.value.trim()) comboInput.dispatchEvent(new Event("input")); });
+    document.addEventListener("click", (e) => { if(!container.contains(e.target)) closeList(); });
+
+    addPortToggle.addEventListener("click", () => {
+      addPortForm.hidden = !addPortForm.hidden;
+      if(!addPortForm.hidden){
+        newPortName.value = comboInput.value.trim();
+        newPortCountry.value = "";
+        fillOffsetSelect(newPortOffset, false, "UTC");
+        newPortName.focus();
+      }
+    });
+    newPortCancel.addEventListener("click", () => { addPortForm.hidden = true; });
+    newPortSave.addEventListener("click", () => {
+      const name = newPortName.value.trim();
+      if(!name){ newPortName.focus(); return; }
+      const country = newPortCountry.value.trim();
+      const idx = addCustomPort(name, country, newPortOffset.value);
+      loc.mode = "port";
+      loc.portIndex = idx;
+      loc.tzOverride = null;
+      addPortForm.hidden = true;
+      refreshTabs(); refreshComboText(); refreshBadge(); onChange();
+    });
+
+    tzEditToggle.addEventListener("click", () => {
+      tzEditOpen = !tzEditOpen;
+      tzOverrideRow.hidden = !tzEditOpen;
+      tzEditToggle.textContent = tzEditOpen ? "Hide time zone editor" : "Edit time zone";
+    });
+    tzOverrideSelect.addEventListener("change", () => {
+      loc.tzOverride = tzOverrideSelect.value || null;
+      refreshBadge();
+      onChange();
+    });
+
+    function onManualChange(){
+      const ld = parseFloat(latDegEl.value), lm = parseFloat(latMinEl.value);
+      const gd = parseFloat(lonDegEl.value), gm = parseFloat(lonMinEl.value);
+      loc.latD = isNaN(ld) ? null : clamp(ld, 0, 90);
+      loc.latM = isNaN(lm) ? null : clamp(lm, 0, 59.999);
+      loc.lonD = isNaN(gd) ? null : clamp(gd, 0, 180);
+      loc.lonM = isNaN(gm) ? null : clamp(gm, 0, 59.999);
+      loc.latHem = latHem.value; loc.lonHem = lonHem.value;
+      refreshBadge(); onChange();
+    }
+    [latDegEl, latMinEl, latHem, lonDegEl, lonMinEl, lonHem].forEach(el => el.addEventListener("input", onManualChange));
+    latHem.addEventListener("change", onManualChange);
+    lonHem.addEventListener("change", onManualChange);
+
+    refreshTabs(); refreshComboText(); refreshManualInputs(); refreshBadge();
+  }
+
+  const depLocEl = document.getElementById("depLoc");
+  const arrLocEl = document.getElementById("arrLoc");
+
+  document.getElementById("swapBtn").addEventListener("click", () => {
+    const tmp = state.dep; state.dep = state.arr; state.arr = tmp;
+    renderLocationBlock(depLocEl, state.dep, () => { saveState(); render(); });
+    renderLocationBlock(arrLocEl, state.arr, () => { saveState(); populateRobRefOptions(); render(); });
+    saveState(); populateRobRefOptions(); render();
+  });
+
+  /* ---------------- Alternative arrival ports ---------------- */
+  // Default is a single arrival port (the primary Arrival card above); these
+  // are optional "what-if" destinations that still sail from the same
+  // departure position/time at the same speed — only distance differs.
+  function renderAltArrivals(){
+    const container = document.getElementById("altArrivalsList");
+    container.innerHTML = "";
+    state.altArrivals.forEach((alt, idx) => {
+      const card = document.createElement("section");
+      card.className = "card";
+      card.innerHTML =
+        '<p class="nameplate"><span class="alt-title"></span>'+
+          '<button type="button" class="consum-del" aria-label="Remove alternative arrival port">'+TRASH_SVG+'</button>'+
+        '</p>'+
+        '<div class="alt-loc"></div>'+
+        '<div class="field-row" style="margin-top:12px;">'+
+          '<div class="field">'+
+            '<label>Distance to go (nm)</label>'+
+            '<input type="number" class="alt-distance" inputmode="decimal" min="0" step="any" placeholder="0.0">'+
+          '</div>'+
+          '<div class="field">'+
+            '<label>Speed (kn)</label>'+
+            '<input type="number" class="alt-speed" inputmode="decimal" min="0" step="any" placeholder="0.0">'+
+          '</div>'+
+        '</div>'+
+        '<div class="alt-result"></div>';
+      card.querySelector(".alt-title").textContent = "Alternative Arrival "+(idx+1);
+      const locEl = card.querySelector(".alt-loc");
+      const distEl = card.querySelector(".alt-distance");
+      const speedEl = card.querySelector(".alt-speed");
+      const resultEl = card.querySelector(".alt-result");
+      distEl.value = alt.distance;
+      speedEl.value = alt.speed;
+
+      function refreshAltResult(){
+        const calc = calcETAFor(alt.distance, alt.speed);
+        if(!calc){
+          resultEl.innerHTML = '<p class="result-empty" style="margin-top:12px;">Enter a distance to see this port&rsquo;s ETA.</p>';
+          return;
+        }
+        const arrZI = getZoneInfo(alt.arr);
+        const shown = arrZI ? calc.etaUTC.setZone(arrZI.zone) : calc.etaUTC;
+        const off = arrZI ? zoneOffsetLabel(arrZI, calc.etaUTC) : "UTC";
+        resultEl.innerHTML =
+          '<div class="alt-highlight">'+
+            '<div class="stat-tile"><div class="k">Passage time</div><div class="v">'+fmtDuration(calc.hours)+'</div></div>'+
+            '<div class="stat-tile"><div class="k">ETA'+(arrZI?" (Arrival LT)":" (UTC)")+'</div><div class="v" style="color:var(--brass);">'+shown.toFormat("dd LLL, HH:mm")+' <span>('+off+')</span></div></div>'+
+          '</div>';
+      }
+
+      renderLocationBlock(locEl, alt.arr, () => {
+        saveState();
+        refreshAltResult();
+        populateRobRefOptions();
+        refreshAllConsumption();
+        renderResult(); // this port's label may be showing in the ETA speed-range switcher
+      });
+      distEl.addEventListener("input", () => {
+        alt.distance = distEl.value;
+        saveState();
+        refreshAltResult();
+        refreshAllConsumption();
+        renderResult(); // keep the ETA speed-range table live if this port is the one selected
+      });
+      speedEl.addEventListener("input", () => {
+        alt.speed = speedEl.value;
+        alt.speedLinked = false;   // now customized, stop following the primary
+        saveState();
+        refreshAltResult();
+        refreshAllConsumption();
+        renderResult();
+      });
+      card.querySelector(".consum-del").addEventListener("click", () => {
+        const wasReference = state.robReferencePort === alt.id;
+        state.altArrivals = state.altArrivals.filter(a => a.id !== alt.id);
+        if(wasReference) state.robReferencePort = "primary";
+        saveState();
+        renderAltArrivals();
+        populateRobRefOptions();
+        refreshAllConsumption();
+        renderResult(); // drops/self-heals the ETA speed-range switcher if this port was selected
+      });
+
+      refreshAltResult();
+      container.appendChild(card);
+    });
+  }
+  document.getElementById("addAltArrivalBtn").addEventListener("click", () => {
+    state.altArrivals.push(defaultAltArrival());
+    saveState();
+    renderAltArrivals();
+    populateRobRefOptions();
+    renderResult(); // the ETA speed-range switcher needs to appear now that an alt exists
+  });
+
+  /* ---------------- ROB reference arrival (Consumption tab) ---------------- */
+  function populateRobRefOptions(){
+    const wrap = document.getElementById("robRefWrap");
+    const sel = document.getElementById("robRefSelect");
+    if(!state.altArrivals.length){
+      wrap.hidden = true;
+      if(state.robReferencePort !== "primary"){ state.robReferencePort = "primary"; saveState(); }
+      return;
+    }
+    wrap.hidden = false;
+    sel.innerHTML = "";
+    const optPrimary = document.createElement("option");
+    optPrimary.value = "primary";
+    const primaryZI = getZoneInfo(state.arr);
+    optPrimary.textContent = "Primary — "+(primaryZI ? primaryZI.label : "arrival not set");
+    sel.appendChild(optPrimary);
+    state.altArrivals.forEach((alt, idx) => {
+      const zi = getZoneInfo(alt.arr);
+      const opt = document.createElement("option");
+      opt.value = alt.id;
+      opt.textContent = "Alt "+(idx+1)+" — "+(zi ? zi.label : "arrival not set");
+      sel.appendChild(opt);
+    });
+    const validIds = ["primary"].concat(state.altArrivals.map(a => a.id));
+    if(!validIds.includes(state.robReferencePort)){ state.robReferencePort = "primary"; saveState(); }
+    sel.value = state.robReferencePort;
+  }
+  document.getElementById("robRefSelect").addEventListener("change", () => {
+    state.robReferencePort = document.getElementById("robRefSelect").value;
+    saveState();
+    refreshAllConsumption();
+  });
+
+  /* ---------------- Date / time / voyage inputs ---------------- */
+  const depDate = document.getElementById("depDate");
+  const depTime = document.getElementById("depTime");
+  const dtgInput = document.getElementById("dtg");
+  const speedInput = document.getElementById("speed");
+  const varianceInput = document.getElementById("variance");
+  const intervalInput = document.getElementById("interval");
+
+  function setNow(){
+    const zi = getZoneInfo(state.dep);
+    const now = zi ? DT.now().setZone(zi.zone) : DT.local();
+    state.dateStr = now.toFormat("yyyy-LL-dd");
+    state.timeStr = now.toFormat("HH:mm");
+    depDate.value = state.dateStr; depTime.value = state.timeStr;
+    saveState(); render();
+  }
+  document.getElementById("nowBtn").addEventListener("click", setNow);
+  depDate.addEventListener("input", () => { state.dateStr = depDate.value; saveState(); render(); });
+  depTime.addEventListener("input", () => { state.timeStr = depTime.value; saveState(); render(); });
+  dtgInput.addEventListener("input", () => { state.distance = dtgInput.value; saveState(); render(); });
+  speedInput.addEventListener("input", () => {
+    state.speed = speedInput.value;
+    state.altArrivals.forEach(alt => { if(alt.speedLinked) alt.speed = state.speed; });
+    saveState();
+    renderAltArrivals();
+    render();
+  });
+  varianceInput.addEventListener("input", () => { state.variance = varianceInput.value; saveState(); render(); });
+  intervalInput.addEventListener("input", () => { state.interval = intervalInput.value; saveState(); render(); });
+
+  /* ---------------- Required speed inputs ---------------- */
+  const reqToggle = document.getElementById("reqToggle");
+  const reqBody = document.getElementById("reqBody");
+  const reqDateEl = document.getElementById("reqDate");
+  const reqTimeEl = document.getElementById("reqTime");
+  const reqZoneEl = document.getElementById("reqZone");
+  reqToggle.addEventListener("change", () => { state.reqEnabled = reqToggle.checked; reqBody.hidden = !state.reqEnabled; saveState(); render(); });
+  reqDateEl.addEventListener("input", () => { state.reqDate = reqDateEl.value; saveState(); render(); });
+  reqTimeEl.addEventListener("input", () => { state.reqTime = reqTimeEl.value; saveState(); render(); });
+  reqZoneEl.addEventListener("change", () => { state.reqZone = reqZoneEl.value; saveState(); render(); });
+
+  /* ---------------- Core calculations ---------------- */
+  function departureInstant(){
+    const zi = getZoneInfo(state.dep);
+    if(!zi || !state.dateStr || !state.timeStr) return null;
+    const dt = DT.fromISO(state.dateStr+"T"+state.timeStr, {zone: zi.zone});
+    if(!dt.isValid) return null;
+    return {instant: dt, zoneInfo: zi};
+  }
+
+  // Shared by the primary voyage and every alternative arrival port — each
+  // sails from the same departure instant but at its own distance and speed,
+  // computed fully independently (no fallback to state.speed here — every
+  // caller must pass its own speed explicitly).
+  function calcETAFor(distanceVal, speedVal){
+    const dep = departureInstant();
+    const distance = parseFloat(distanceVal);
+    const speed = parseFloat(speedVal);
+    if(!dep || !isFinite(distance) || distance<=0 || !isFinite(speed) || speed<=0) return null;
+    const hours = distance/speed;
+    const etaUTC = dep.instant.toUTC().plus({hours});
+    return {dep, distance, speed, hours, etaUTC};
+  }
+  function primaryETA(){ return calcETAFor(state.distance, state.speed); }
+
+  // Which port's passage the Consumption tab should project fuel/water/lube
+  // against — the primary arrival, or one of the alternative ports if any
+  // are entered and one has been picked as the reference.
+  function getReferenceCalc(){
+    if(state.robReferencePort && state.robReferencePort !== "primary"){
+      const alt = state.altArrivals.find(a => a.id === state.robReferencePort);
+      if(alt) return calcETAFor(alt.distance, alt.speed);
+    }
+    return primaryETA();
+  }
+  // Always returns a real port label ("arrival not set" fallback) — used for
+  // section headings that should be meaningful even with just the primary port.
+  function getRobReferencePortLabel(){
+    if(state.robReferencePort && state.robReferencePort !== "primary"){
+      const alt = state.altArrivals.find(a => a.id === state.robReferencePort);
+      if(alt){ const zi = getZoneInfo(alt.arr); return zi ? zi.label : "arrival not set"; }
+    }
+    const zi = getZoneInfo(state.arr);
+    return zi ? zi.label : "arrival not set";
+  }
+  // null when there's nothing to disambiguate (no alt ports at all) — keeps
+  // the inline consumption banner and report text uncluttered in that case;
+  // otherwise returns the real port label.
+  function getRobReferenceLabel(){
+    if(!state.altArrivals.length) return null;
+    return getRobReferencePortLabel();
+  }
+
+  function fmtDuration(hoursFloat){
+    const totalMin = Math.round(hoursFloat*60);
+    const d = Math.floor(totalMin/1440);
+    const h = Math.floor((totalMin%1440)/60);
+    const m = totalMin%60;
+    const parts = [];
+    if(d) parts.push(d+"d");
+    parts.push(String(h).padStart(d?2:1,"0")+"h");
+    parts.push(String(m).padStart(2,"0")+"m");
+    return parts.join(" ");
+  }
+
+  function speedTable(calc){
+    const variance = Math.max(0, parseFloat(state.variance)||0);
+    let interval = parseFloat(state.interval);
+    if(!isFinite(interval) || interval<=0) interval = 0.5;
+    if(variance===0) return [];
+    let n = Math.round(variance/interval);
+    n = clamp(n, 1, 20);
+    const rows = [];
+    for(let k=-n;k<=n;k++){
+      const s = calc.speed + k*interval;
+      if(s<=0) continue;
+      const hours = calc.distance/s;
+      const etaUTC = calc.dep.instant.toUTC().plus({hours});
+      rows.push({speed:s, etaUTC, planned:k===0});
+    }
+    return rows;
+  }
+
+  function requiredSpeedCalc(){
+    const dep = departureInstant();
+    const distance = parseFloat(state.distance);
+    if(!dep || !isFinite(distance) || distance<=0) return {status:"incomplete"};
+    if(!state.reqDate || !state.reqTime) return {status:"incomplete"};
+    let zone;
+    if(state.reqZone==="utc") zone = "UTC";
+    else if(state.reqZone==="dep") zone = dep.zoneInfo.zone;
+    else { const zi = getZoneInfo(state.arr); if(!zi) return {status:"needzone"}; zone = zi.zone; }
+    const dt = DT.fromISO(state.reqDate+"T"+state.reqTime, {zone});
+    if(!dt.isValid) return {status:"invalid"};
+    const availHours = dt.toUTC().diff(dep.instant.toUTC(),"hours").hours;
+    if(availHours<=0) return {status:"past"};
+    const reqSpeed = distance/availHours;
+    return {status:"ok", reqSpeed, availHours, targetUTC: dt.toUTC()};
+  }
+
+  /* ---------------- Rendering ---------------- */
+  const resultBody = document.getElementById("resultBody");
+  const bbValue = document.getElementById("bbValue");
+  const bbLabel = document.getElementById("bbLabel");
+  const reqResultEl = document.getElementById("reqResult");
+  let lastEtaBBText = "— enter voyage details —";
+
+  function renderResult(){
+    const calc = primaryETA();
+    if(!calc){
+      resultBody.innerHTML = '<p class="result-empty">Enter a departure location &amp; time, distance to go and speed to see the ETA.</p>';
+      lastEtaBBText = "— enter voyage details —";
+      updateBottomBar();
+      return;
+    }
+    const arrZI = getZoneInfo(state.arr);
+    const etaArr = arrZI ? calc.etaUTC.setZone(arrZI.zone) : null;
+    const etaDep = calc.etaUTC.setZone(calc.dep.zoneInfo.zone);
+
+    let html = "";
+    if(etaArr){
+      html += '<div class="result-eta-label">Arrival local time</div>';
+      html += '<div class="result-eta-date">'+etaArr.toFormat("dd LLL yyyy")+'</div>';
+      html += '<div class="result-eta-time">'+etaArr.toFormat("HH:mm")+' <span>&middot; '+zoneOffsetLabel(arrZI, calc.etaUTC)+'</span></div>';
+      lastEtaBBText = etaArr.toFormat("dd LLL, HH:mm")+" LT";
+    } else {
+      html += '<div class="result-eta-label">Arrival time (UTC)</div>';
+      html += '<div class="result-eta-date">'+calc.etaUTC.toFormat("dd LLL yyyy")+'</div>';
+      html += '<div class="result-eta-time">'+calc.etaUTC.toFormat("HH:mm")+' <span>&middot; UTC</span></div>';
+      html += '<p class="result-empty" style="margin-top:8px;">Select an arrival location to convert to local time.</p>';
+      lastEtaBBText = calc.etaUTC.toFormat("dd LLL, HH:mm")+" UTC";
+    }
+
+    html += '<div class="stat-grid">'+
+      '<div class="stat-tile"><div class="k">Passage time</div><div class="v">'+fmtDuration(calc.hours)+'</div></div>'+
+      '<div class="stat-tile"><div class="k">Distance</div><div class="v">'+calc.distance.toLocaleString()+' nm</div></div>'+
+      '<div class="stat-tile"><div class="k">Speed</div><div class="v">'+calc.speed.toFixed(1)+' kn</div></div>'+
+    '</div>';
+
+    html += '<div class="result-secondary">'+
+      '<div><span>Departure LT</span><b>'+calc.dep.instant.toFormat("dd LLL HH:mm")+' ('+zoneOffsetLabel(calc.dep.zoneInfo, calc.dep.instant.toUTC())+')</b></div>'+
+      '<div><span>Arrival UTC</span><b>'+calc.etaUTC.toFormat("dd LLL HH:mm")+'</b></div>'+
+    '</div>';
+
+    // "ETA across speed range" is a distinct, switchable view — it always
+    // starts on the primary arrival, but if alternative ports exist the user
+    // can flip it to explore any of them instead. Whether the section shows
+    // at all is still gated on the primary calc/variance (unchanged from
+    // before); which port's numbers actually fill the table is separate.
+    const primaryRows = speedTable(calc);
+    if(primaryRows.length){
+      const validSpeedRangeIds = ["primary"].concat(state.altArrivals.map(a => a.id));
+      if(!validSpeedRangeIds.includes(state.etaSpeedRangePort)) state.etaSpeedRangePort = "primary";
+
+      const speedRangeAlt = state.etaSpeedRangePort!=="primary"
+        ? state.altArrivals.find(a => a.id === state.etaSpeedRangePort) : null;
+      const speedRangeCalc = speedRangeAlt ? calcETAFor(speedRangeAlt.distance, speedRangeAlt.speed) : calc;
+      const speedRangeArrZI = speedRangeAlt ? getZoneInfo(speedRangeAlt.arr) : arrZI;
+      const speedRangeRows = speedRangeCalc ? speedTable(speedRangeCalc) : [];
+      const speedTableTitle = "ETA Across Speed Range — "+(speedRangeArrZI ? speedRangeArrZI.label : "arrival not set");
+
+      let switchHtml = "";
+      if(state.altArrivals.length){
+        switchHtml = '<div class="port-switch">'+
+          '<button type="button" class="port-switch-btn'+(!speedRangeAlt?" active":"")+'" data-port-switch="primary">Primary</button>'+
+          state.altArrivals.map((a,i) => '<button type="button" class="port-switch-btn'+(state.etaSpeedRangePort===a.id?" active":"")+'" data-port-switch="'+a.id+'">Alt '+(i+1)+'</button>').join("")+
+        '</div>';
+      }
+
+      html += '<div class="var-wrap"><h3>'+escHtml(speedTableTitle)+'</h3>'+switchHtml;
+      if(speedRangeRows.length){
+        html += '<div style="overflow-x:auto;"><table class="var-table"><thead><tr><th>Speed</th><th>Passage</th><th>ETA '+(speedRangeArrZI?"(Arrival LT)":"(UTC)")+'</th></tr></thead><tbody id="varTbody"></tbody></table></div>';
+      } else {
+        html += '<p class="result-empty">Enter this port&rsquo;s distance and speed to see its speed range.</p>';
+      }
+      html += '</div>';
+      resultBody.innerHTML = html;
+
+      const tbody = resultBody.querySelector("#varTbody");
+      if(tbody){
+        speedRangeRows.forEach(r => {
+          const tr = document.createElement("tr");
+          if(r.planned) tr.className = "planned";
+          const h = speedRangeCalc.distance/r.speed;
+          const shown = speedRangeArrZI ? r.etaUTC.setZone(speedRangeArrZI.zone) : r.etaUTC;
+          tr.innerHTML = '<td>'+r.speed.toFixed(1)+' kn'+(r.planned?'<span class="chip">PLANNED</span>':'')+'</td>'+
+            '<td>'+fmtDuration(h)+'</td>'+
+            '<td>'+shown.toFormat("dd LLL, HH:mm")+'</td>';
+          tbody.appendChild(tr);
+        });
+      }
+      resultBody.querySelectorAll(".port-switch-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+          state.etaSpeedRangePort = btn.dataset.portSwitch;
+          saveState();
+          renderResult();
+        });
+      });
+    } else {
+      resultBody.innerHTML = html;
+    }
+    updateBottomBar();
+  }
+
+  function renderRequired(){
+    if(!state.reqEnabled) { reqResultEl.innerHTML=""; return; }
+    const r = requiredSpeedCalc();
+    if(r.status==="incomplete"){
+      reqResultEl.innerHTML = '<p class="result-empty" style="margin-top:12px;">Enter the required arrival date &amp; time.</p>';
+      return;
+    }
+    if(r.status==="needzone"){
+      reqResultEl.innerHTML = '<p class="req-note warn">Select an arrival location, or switch the time zone to Departure or UTC.</p>';
+      return;
+    }
+    if(r.status==="invalid"){
+      reqResultEl.innerHTML = '<p class="req-note danger">That date / time isn&rsquo;t valid.</p>';
+      return;
+    }
+    if(r.status==="past"){
+      reqResultEl.innerHTML = '<div class="req-result"><p class="req-note danger">Required ETA must be after the current departure date &amp; time.</p></div>';
+      return;
+    }
+    const speed = parseFloat(state.speed);
+    let deltaHTML = "";
+    if(isFinite(speed) && speed>0){
+      const diff = r.reqSpeed - speed;
+      const cls = diff>0.05 ? "warn" : "ok";
+      const word = diff>0.05 ? "faster" : diff<-0.05 ? "slower" : "— matches planned speed";
+      if(Math.abs(diff)>0.05) deltaHTML = '<div class="delta '+cls+'">'+(diff>0?"+":"")+diff.toFixed(1)+' kn '+word+' than planned</div>';
+      else deltaHTML = '<div class="delta ok">Matches planned speed</div>';
+    }
+    let warnHTML = "";
+    if(r.reqSpeed > 28) warnHTML = '<p class="req-note warn">This exceeds a typical merchant vessel&rsquo;s service speed &mdash; double-check the entries.</p>';
+    reqResultEl.innerHTML = '<div class="req-result">'+
+      '<div class="v">'+r.reqSpeed.toFixed(2)+' kn</div>'+
+      deltaHTML+
+      '<div class="result-secondary" style="margin-top:10px; padding-top:10px;"><div><span>Time available</span><b>'+fmtDuration(r.availHours)+'</b></div></div>'+
+      warnHTML+
+    '</div>';
+  }
+
+  /* ---------------- Consumption (fuel / fresh water / lube oil) ---------------- */
+  const TRASH_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"></path><path d="M9 7V4h6v3"></path><path d="M6 7l1 13h10l1-13"></path></svg>';
+
+  function daysToETA(){
+    const calc = getReferenceCalc();
+    return calc ? calc.hours/24 : null;
+  }
+  function fmtQty(n){
+    if(!isFinite(n)) return "—";
+    return n.toLocaleString(undefined, {minimumFractionDigits:1, maximumFractionDigits:1});
+  }
+  // burnRate: net daily depletion (perDay for fuel/lube; consumption-production for FW).
+  function consumableStatus(projected, burnRate){
+    if(projected==null) return "pending";
+    if(projected < 0) return "danger";
+    if(burnRate > 0 && projected < burnRate) return "warn";
+    return "ok";
+  }
+  const STATUS_LABEL = {pending:"—", ok:"OK", warn:"LOW", danger:"OUT"};
+
+  let consumRowRefreshers = [];
+
+  // Mirrors the ETA tab's "ETA across speed range" table: projected ROB at each
+  // speed in the same planned-speed ± variance range, since a different speed
+  // changes passage time (and so total consumption) even at the same daily rate.
+  function speedRobTableHTML(robVal, dailyBurn, title, unit){
+    const calc = getReferenceCalc();
+    if(!calc || !isFinite(robVal)) return "";
+    const rows = speedTable(calc);
+    if(!rows.length) return "";
+    let html = '<div class="var-wrap"><h3>'+escHtml(title)+' ('+escHtml(unit)+')</h3><div style="overflow-x:auto;"><table class="var-table"><thead><tr><th>Speed</th><th>Projected ROB</th></tr></thead><tbody>';
+    rows.forEach(r => {
+      const days = calc.distance/r.speed/24;
+      const projected = robVal - dailyBurn*days;
+      const cls = projected<0 ? ' class="danger-cell"' : '';
+      html += '<tr'+(r.planned?' class="planned"':'')+'><td>'+r.speed.toFixed(1)+' kn'+(r.planned?'<span class="chip">PLANNED</span>':'')+'</td><td'+cls+'>'+fmtQty(projected)+'</td></tr>';
+    });
+    html += '</tbody></table></div></div>';
+    return html;
+  }
+
+  function escHtml(s){
+    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  // One consolidated table per section (Fuel, Lube Oil) — Speed down the rows,
+  // every item in that list as its own column — instead of a separate small
+  // table per item, to match the ETA tab's single "ETA across speed range" table.
+  function consumableSpeedSummaryHTML(listKey, title){
+    const calc = getReferenceCalc();
+    if(!calc) return "";
+    const rows = speedTable(calc);
+    if(!rows.length) return "";
+    const items = state.consumption[listKey];
+    const ready = items.filter(it => isFinite(parseFloat(it.rob)) && isFinite(parseFloat(it.perDay)));
+    if(!ready.length) return "";
+    let html = '<div class="var-wrap"><h3>'+escHtml(title)+' ('+escHtml(unitFor(listKey))+')</h3><div style="overflow-x:auto;"><table class="var-table"><thead><tr><th>Speed</th>';
+    items.forEach(it => { html += '<th>'+escHtml(it.name)+'</th>'; });
+    html += '</tr></thead><tbody>';
+    rows.forEach(r => {
+      const days = calc.distance/r.speed/24;
+      html += '<tr'+(r.planned?' class="planned"':'')+'><td>'+r.speed.toFixed(1)+' kn'+(r.planned?'<span class="chip">PLANNED</span>':'')+'</td>';
+      items.forEach(it => {
+        const rob = parseFloat(it.rob), perDay = parseFloat(it.perDay);
+        let cell = "—", cls = "";
+        if(isFinite(rob) && isFinite(perDay)){
+          const projected = rob - perDay*days;
+          cell = fmtQty(projected);
+          cls = projected<0 ? ' class="danger-cell"' : '';
+        }
+        html += '<td'+cls+'>'+cell+'</td>';
+      });
+      html += '</tr>';
+    });
+    html += '</tbody></table></div></div>';
+    return html;
+  }
+
+  function unitFor(listKey){ return state.consumption.units[listKey] || "MT"; }
+  function fillUnitSelect(el, selected){
+    el.innerHTML = "";
+    UNIT_OPTIONS.forEach(u => {
+      const opt = document.createElement("option");
+      opt.value = u; opt.textContent = u;
+      el.appendChild(opt);
+    });
+    el.value = selected;
+  }
+  function applyUnitLabels(){
+    document.getElementById("fuelRobLabel").textContent = "ROB ("+unitFor("fuels")+")";
+    document.getElementById("fuelPerDayLabel").textContent = "Per day ("+unitFor("fuels")+")";
+    document.getElementById("lubeRobLabel").textContent = "ROB ("+unitFor("lubeOils")+")";
+    document.getElementById("lubePerDayLabel").textContent = "Per day ("+unitFor("lubeOils")+")";
+    const fwUnit = state.consumption.freshWater.unit;
+    document.getElementById("fwRobLabel").textContent = "ROB ("+fwUnit+")";
+    document.getElementById("fwConsLabel").textContent = "Cons. / day ("+fwUnit+")";
+    document.getElementById("fwProdLabel").textContent = "Prod. / day ("+fwUnit+")";
+  }
+
+  const SUMMARY_TITLE = {fuels:"Bunker Fuel", lubeOils:"Lube Oil"};
+  const SUMMARY_CONTAINER_ID = {fuels:"fuelSpeedSummary", lubeOils:"lubeSpeedSummary"};
+  function refreshListSummary(listKey){
+    const id = SUMMARY_CONTAINER_ID[listKey];
+    const el = id && document.getElementById(id);
+    if(el) el.innerHTML = consumableSpeedSummaryHTML(listKey, SUMMARY_TITLE[listKey]);
+  }
+
+  function renderConsumableList(container, listKey){
+    container.innerHTML = "";
+    consumRowRefreshers = consumRowRefreshers.filter(r => r.listKey !== listKey);
+    state.consumption[listKey].forEach(item => {
+      const row = document.createElement("div");
+      row.className = "consum-row";
+      row.innerHTML =
+        '<div class="consum-row-line">'+
+          '<span class="name col-name"></span>'+
+          '<input type="number" class="c-rob col-input" inputmode="decimal" min="0" step="any" placeholder="0.0">'+
+          '<input type="number" class="c-perday col-input" inputmode="decimal" min="0" step="any" placeholder="0.0">'+
+          '<span class="col-del">'+(item.removable ? '<button type="button" class="consum-del" aria-label="Remove">'+TRASH_SVG+'</button>' : '')+'</span>'+
+        '</div>'+
+        '<div class="consum-result"><span class="c-result-text">—</span><span class="consum-chip pending c-chip">—</span></div>'+
+        '<div class="req-note danger c-warning" hidden></div>';
+      row.querySelector(".name").textContent = item.name;
+      const robEl = row.querySelector(".c-rob");
+      const perDayEl = row.querySelector(".c-perday");
+      const resultText = row.querySelector(".c-result-text");
+      const chip = row.querySelector(".c-chip");
+      const warningEl = row.querySelector(".c-warning");
+      robEl.value = item.rob;
+      perDayEl.value = item.perDay;
+      function refresh(){
+        const days = daysToETA();
+        const rob = parseFloat(robEl.value), perDay = parseFloat(perDayEl.value);
+        let projected = null;
+        if(isFinite(rob) && isFinite(perDay) && days!=null) projected = rob - perDay*days;
+        const status = consumableStatus(projected, isFinite(perDay) ? perDay : 0);
+        resultText.textContent = projected==null ? "Enter ROB / per-day — complete ETA tab" : "Projected ROB at ETA: "+fmtQty(projected)+" "+unitFor(listKey);
+        resultText.className = projected==null ? "c-result-text" : "c-result-text "+(projected<0 ? "danger-text" : "brass-text");
+        chip.textContent = STATUS_LABEL[status];
+        chip.className = "consum-chip c-chip "+status;
+        warningEl.hidden = !(projected!=null && projected<0);
+        warningEl.textContent = "⚠ Not enough "+item.name+" — projected to run out before arrival";
+        refreshListSummary(listKey);
+        refreshRobBottomBar();
+      }
+      robEl.addEventListener("input", () => { item.rob = robEl.value; saveState(); refresh(); });
+      perDayEl.addEventListener("input", () => { item.perDay = perDayEl.value; saveState(); refresh(); });
+      const delBtn = row.querySelector(".consum-del");
+      if(delBtn) delBtn.addEventListener("click", () => {
+        state.consumption[listKey] = state.consumption[listKey].filter(x => x.id !== item.id);
+        saveState();
+        renderConsumableList(container, listKey);
+      });
+      refresh();
+      consumRowRefreshers.push({listKey, refresh});
+      container.appendChild(row);
+    });
+    refreshListSummary(listKey);
+    refreshRobBottomBar();
+  }
+
+  function wireAddItemForm(toggleId, formId, nameInputId, cancelId, saveId, listKey, containerEl){
+    const toggle = document.getElementById(toggleId);
+    const form = document.getElementById(formId);
+    const nameInput = document.getElementById(nameInputId);
+    const cancel = document.getElementById(cancelId);
+    const save = document.getElementById(saveId);
+    toggle.addEventListener("click", () => {
+      form.hidden = !form.hidden;
+      if(!form.hidden){ nameInput.value = ""; nameInput.focus(); }
+    });
+    cancel.addEventListener("click", () => { form.hidden = true; });
+    save.addEventListener("click", () => {
+      const name = nameInput.value.trim();
+      if(!name){ nameInput.focus(); return; }
+      state.consumption[listKey].push({id:newItemId(), name, rob:"", perDay:"", removable:true});
+      saveState();
+      form.hidden = true;
+      renderConsumableList(containerEl, listKey);
+    });
+  }
+
+  const fwRob = document.getElementById("fwRob");
+  const fwCons = document.getElementById("fwCons");
+  const fwProd = document.getElementById("fwProd");
+  const fwResultText = document.getElementById("fwResultText");
+  const fwChip = document.getElementById("fwChip");
+  const fwSpeedSummary = document.getElementById("fwSpeedSummary");
+  const fwWarning = document.getElementById("fwWarning");
+  function refreshFreshWater(){
+    const days = daysToETA();
+    const rob = parseFloat(fwRob.value);
+    const cons = parseFloat(fwCons.value) || 0;
+    const prod = parseFloat(fwProd.value) || 0;
+    let projected = null;
+    if(isFinite(rob) && days!=null) projected = rob + (prod - cons)*days;
+    const status = consumableStatus(projected, cons - prod);
+    const fwUnit = state.consumption.freshWater.unit;
+    fwResultText.textContent = projected==null ? "Enter ROB — complete ETA tab" : "Projected ROB at ETA: "+fmtQty(projected)+" "+fwUnit;
+    fwResultText.className = projected==null ? "" : (projected<0 ? "danger-text" : "brass-text");
+    fwChip.textContent = STATUS_LABEL[status];
+    fwChip.className = "consum-chip "+status;
+    fwWarning.hidden = !(projected!=null && projected<0);
+    fwWarning.textContent = "⚠ Not enough fresh water — projected to run out before arrival";
+    fwSpeedSummary.innerHTML = isFinite(rob) ? speedRobTableHTML(rob, cons - prod, "Fresh Water", fwUnit) : "";
+    refreshRobBottomBar();
+  }
+  [fwRob, fwCons, fwProd].forEach(el => el.addEventListener("input", () => {
+    state.consumption.freshWater.rob = fwRob.value;
+    state.consumption.freshWater.consPerDay = fwCons.value;
+    state.consumption.freshWater.prodPerDay = fwProd.value;
+    saveState();
+    refreshFreshWater();
+  }));
+
+  const fuelUnitSelect = document.getElementById("fuelUnitSelect");
+  const lubeUnitSelect = document.getElementById("lubeUnitSelect");
+  const fwUnitSelect = document.getElementById("fwUnitSelect");
+  fillUnitSelect(fuelUnitSelect, state.consumption.units.fuels);
+  fillUnitSelect(lubeUnitSelect, state.consumption.units.lubeOils);
+  fillUnitSelect(fwUnitSelect, state.consumption.freshWater.unit);
+  fuelUnitSelect.addEventListener("change", () => {
+    state.consumption.units.fuels = fuelUnitSelect.value;
+    saveState(); applyUnitLabels(); refreshListSummary("fuels");
+    consumRowRefreshers.filter(r => r.listKey==="fuels").forEach(r => r.refresh());
+  });
+  lubeUnitSelect.addEventListener("change", () => {
+    state.consumption.units.lubeOils = lubeUnitSelect.value;
+    saveState(); applyUnitLabels(); refreshListSummary("lubeOils");
+    consumRowRefreshers.filter(r => r.listKey==="lubeOils").forEach(r => r.refresh());
+  });
+  fwUnitSelect.addEventListener("change", () => {
+    state.consumption.freshWater.unit = fwUnitSelect.value;
+    saveState(); applyUnitLabels(); refreshFreshWater();
+  });
+
+  function renderRobSummaryTitle(){
+    document.getElementById("robSummaryTitle").textContent =
+      "ROB Across Speed Range — "+getRobReferencePortLabel();
+  }
+  function renderConsumInfo(){
+    renderRobSummaryTitle();
+    const el = document.getElementById("consumInfo");
+    const calc = getReferenceCalc();
+    if(!calc){
+      el.innerHTML = "Complete the ETA tab (departure time, distance, speed) to project consumption at arrival.";
+      return;
+    }
+    const refLabel = getRobReferenceLabel();
+    el.innerHTML = (refLabel ? "<b class=\"text-brass\">"+escHtml(refLabel)+"</b> &middot; " : "")+
+      "Passage time to ETA: <b>"+fmtDuration(calc.hours)+"</b> &middot; "+(calc.hours/24).toFixed(2)+" days at "+calc.speed.toFixed(1)+" kn";
+  }
+
+  let lastRobBBText = "— enter ROB details —";
+  // A quick at-a-glance status across every fuel, lube oil, and fresh water
+  // line — mirrors what the ETA tab's bottom bar does for the ETA itself.
+  function consumptionSummaryText(){
+    const days = daysToETA();
+    let danger = 0, warn = 0, any = false;
+    [...state.consumption.fuels, ...state.consumption.lubeOils].forEach(it => {
+      const rob = parseFloat(it.rob), perDay = parseFloat(it.perDay);
+      if(!isFinite(rob) || !isFinite(perDay)) return;
+      any = true;
+      if(days==null) return;
+      const status = consumableStatus(rob - perDay*days, perDay);
+      if(status==="danger") danger++; else if(status==="warn") warn++;
+    });
+    const fw = state.consumption.freshWater;
+    const fwRob = parseFloat(fw.rob);
+    if(isFinite(fwRob)){
+      any = true;
+      if(days!=null){
+        const cons = parseFloat(fw.consPerDay)||0, prod = parseFloat(fw.prodPerDay)||0;
+        const status = consumableStatus(fwRob + (prod-cons)*days, cons-prod);
+        if(status==="danger") danger++; else if(status==="warn") warn++;
+      }
+    }
+    if(!any) return "— enter ROB details —";
+    if(days==null) return "Complete the ETA tab";
+    if(danger>0) return "⚠ "+danger+" item"+(danger>1?"s":"")+" insufficient";
+    if(warn>0) return warn+" item"+(warn>1?"s":"")+" running low";
+    return "All consumables sufficient";
+  }
+
+  function refreshRobBottomBar(){
+    lastRobBBText = consumptionSummaryText();
+    updateBottomBar();
+  }
+
+  function updateBottomBar(){
+    const activeTab = document.querySelector(".main-tab.active");
+    const onConsumption = activeTab && activeTab.dataset.tab === "consumption";
+    if(onConsumption){
+      bbLabel.textContent = "ROB";
+      bbValue.textContent = lastRobBBText;
+      bottomBarEl.setAttribute("aria-label", "Jump to ROB across speed range");
+    } else {
+      bbLabel.textContent = "ETA";
+      bbValue.textContent = lastEtaBBText;
+      bottomBarEl.setAttribute("aria-label", "Jump to ETA");
+    }
+  }
+
+  function refreshAllConsumption(){
+    renderConsumInfo();
+    consumRowRefreshers.forEach(r => r.refresh());
+    refreshFreshWater();
+    refreshListSummary("fuels");
+    refreshListSummary("lubeOils");
+    refreshRobBottomBar();
+  }
+
+  function render(){
+    renderResult();
+    renderRequired();
+    refreshAllConsumption();
+  }
+
+  /* ---------------- Copy report ---------------- */
+  const toastEl = document.getElementById("toast");
+  let toastTimer = null;
+  function toast(msg){
+    toastEl.textContent = msg;
+    toastEl.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(()=>toastEl.classList.remove("show"), 2200);
+  }
+
+  function buildReportText(){
+    const calc = primaryETA();
+    if(!calc) return "ETA Calculator report\n(Incomplete voyage details.)";
+    const arrZI = getZoneInfo(state.arr);
+    const etaArr = arrZI ? calc.etaUTC.setZone(arrZI.zone) : null;
+    const depZI = calc.dep.zoneInfo;
+    const lines = [];
+    lines.push("ETA CALCULATOR REPORT");
+    lines.push("Generated: "+DT.utc().toFormat("dd LLL yyyy HH:mm")+" UTC");
+    lines.push("");
+    lines.push("Departure: "+(depZI.label)+" ("+zoneOffsetLabel(depZI, calc.dep.instant.toUTC())+")");
+    lines.push("  "+calc.dep.instant.toFormat("dd LLL yyyy HH:mm")+" LT");
+    lines.push("Arrival location: "+(arrZI ? arrZI.label+" ("+zoneOffsetLabel(arrZI, calc.etaUTC)+")" : "not set"));
+    lines.push("");
+    lines.push("Distance to go: "+calc.distance+" nm");
+    lines.push("Planned speed: "+calc.speed.toFixed(1)+" kn");
+    lines.push("Passage time: "+fmtDuration(calc.hours));
+    lines.push("");
+    lines.push("ETA (UTC): "+calc.etaUTC.toFormat("dd LLL yyyy HH:mm"));
+    if(etaArr) lines.push("ETA (Arrival LT): "+etaArr.toFormat("dd LLL yyyy HH:mm"));
+
+    const rows = speedTable(calc);
+    if(rows.length){
+      lines.push("");
+      lines.push("Speed variance (±"+(parseFloat(state.variance)||0)+" kn, step "+(parseFloat(state.interval)||0.5)+" kn):");
+      rows.forEach(r=>{
+        const shown = arrZI ? r.etaUTC.setZone(arrZI.zone) : r.etaUTC;
+        lines.push("  "+r.speed.toFixed(1)+" kn -> "+shown.toFormat("dd LLL HH:mm")+(r.planned?" (planned)":""));
+      });
+    }
+
+    if(state.reqEnabled){
+      const r = requiredSpeedCalc();
+      if(r.status==="ok"){
+        lines.push("");
+        lines.push("Required speed for target ETA: "+r.reqSpeed.toFixed(2)+" kn");
+      }
+    }
+
+    if(state.altArrivals.length){
+      lines.push("");
+      lines.push("ALTERNATIVE ARRIVALS");
+      state.altArrivals.forEach((alt, idx) => {
+        const altCalc = calcETAFor(alt.distance, alt.speed);
+        const altZI = getZoneInfo(alt.arr);
+        const label = altZI ? altZI.label : "arrival not set";
+        if(!altCalc){ lines.push("  Alt "+(idx+1)+" — "+label+": distance not set"); return; }
+        const altShown = altZI ? altCalc.etaUTC.setZone(altZI.zone) : altCalc.etaUTC;
+        lines.push("  Alt "+(idx+1)+" — "+label+": "+altCalc.distance+" nm, passage "+fmtDuration(altCalc.hours)+
+          " -> ETA "+altShown.toFormat("dd LLL yyyy HH:mm")+(altZI?" LT":" UTC"));
+      });
+    }
+
+    const refCalc = getReferenceCalc();
+    const days = refCalc ? refCalc.hours/24 : calc.hours/24;
+    const refLabel = getRobReferenceLabel();
+    function reportRow(item, unit){
+      const rob = parseFloat(item.rob), perDay = parseFloat(item.perDay);
+      if(!isFinite(rob) && !isFinite(perDay)) return null;
+      const projected = (isFinite(rob) && isFinite(perDay)) ? rob - perDay*days : null;
+      return "  "+item.name+": ROB "+(isFinite(rob)?rob.toFixed(1):"—")+" "+unit+", "+(isFinite(perDay)?perDay.toFixed(1):"—")+" "+unit+"/day"+
+        (projected!=null ? " -> projected "+fmtQty(projected)+" "+unit+" at ETA" : "");
+    }
+    const fuelUnit = unitFor("fuels"), lubeUnit = unitFor("lubeOils");
+    const fuelLines = state.consumption.fuels.map(it => reportRow(it, fuelUnit)).filter(Boolean);
+    const lubeLines = state.consumption.lubeOils.map(it => reportRow(it, lubeUnit)).filter(Boolean);
+    const fw = state.consumption.freshWater;
+    const fwRobN = parseFloat(fw.rob), fwConsN = parseFloat(fw.consPerDay)||0, fwProdN = parseFloat(fw.prodPerDay)||0;
+    if(fuelLines.length || lubeLines.length || isFinite(fwRobN)){
+      lines.push("");
+      lines.push("CONSUMPTION (projected at ETA, "+days.toFixed(2)+" days"+(refLabel ? ", referenced to "+refLabel : "")+")");
+      if(fuelLines.length){ lines.push("Bunker fuel ("+fuelUnit+"):"); fuelLines.forEach(l=>lines.push(l)); }
+      if(isFinite(fwRobN)){
+        const fwProjected = fwRobN + (fwProdN - fwConsN)*days;
+        const fwUnit = fw.unit;
+        lines.push("Fresh water: ROB "+fwRobN.toFixed(1)+" "+fwUnit+", "+fwConsN.toFixed(1)+" "+fwUnit+"/day consumed, "+fwProdN.toFixed(1)+" "+fwUnit+"/day produced -> projected "+fmtQty(fwProjected)+" "+fwUnit+" at ETA");
+      }
+      if(lubeLines.length){ lines.push("Lube oil ("+lubeUnit+"):"); lubeLines.forEach(l=>lines.push(l)); }
+    }
+
+    return lines.join("\n");
+  }
+
+  // The modern Clipboard API only exists in a "secure context" (https, or
+  // localhost) — it's simply undefined when the app is opened over plain
+  // http (e.g. testing over a LAN IP like http://192.168.x.x:PORT), which is
+  // why that path used to fail every time in that setup. Fall back to the
+  // older execCommand("copy") trick via a temporary textarea, which works
+  // regardless of secure-context.
+  async function copyToClipboard(text){
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      try{ await navigator.clipboard.writeText(text); return true; }catch(e){ /* fall through */ }
+    }
+    try{
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.setAttribute("readonly", "");
+      ta.style.position = "fixed";
+      ta.style.top = "-1000px";
+      ta.style.left = "-1000px";
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      ta.setSelectionRange(0, text.length);
+      const ok = document.execCommand("copy");
+      document.body.removeChild(ta);
+      return ok;
+    }catch(e){
+      return false;
+    }
+  }
+  document.getElementById("copyBtn").addEventListener("click", async () => {
+    const text = buildReportText();
+    const ok = await copyToClipboard(text);
+    toast(ok ? "Report copied" : "Couldn't copy — select text manually");
+  });
+
+  /* ---------------- History ---------------- */
+  const HISTORY_KEY = "bridge-eta-history-v1";
+  function loadHistoryLog(){
+    try{
+      const raw = localStorage.getItem(HISTORY_KEY);
+      const arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr : [];
+    }catch(e){ return []; }
+  }
+  function saveHistoryLog(){
+    try{ localStorage.setItem(HISTORY_KEY, JSON.stringify(voyageHistory)); }catch(e){}
+  }
+  let voyageHistory = loadHistoryLog();
+
+  const historyBtn = document.getElementById("historyBtn");
+  const historySaveBtn = document.getElementById("historySaveBtn");
+  const historyOverlay = document.getElementById("historyOverlay");
+  const historyCloseBtn = document.getElementById("historyCloseBtn");
+  const historyClearBtn = document.getElementById("historyClearBtn");
+  const historyListEl = document.getElementById("historyList");
+
+  function archiveCurrent(){
+    const calc = primaryETA();
+    if(!calc){ toast("Enter departure, distance and speed first"); return; }
+    const arrZI = getZoneInfo(state.arr);
+    const etaArr = arrZI ? calc.etaUTC.setZone(arrZI.zone) : null;
+    const entry = {
+      id: Date.now().toString(36) + Math.random().toString(36).slice(2,7),
+      savedAt: DT.utc().toISO(),
+      depLabel: calc.dep.zoneInfo.label,
+      arrLabel: arrZI ? arrZI.label : "Arrival not set",
+      etaText: etaArr ? etaArr.toFormat("dd LLL, HH:mm")+" LT" : calc.etaUTC.toFormat("dd LLL, HH:mm")+" UTC",
+      distance: calc.distance,
+      speed: calc.speed,
+      state: JSON.parse(JSON.stringify(state))
+    };
+    voyageHistory.unshift(entry);
+    if(voyageHistory.length > 50) voyageHistory.length = 50;
+    saveHistoryLog();
+    renderHistoryList();
+    toast("Saved to history");
+  }
+
+  function renderHistoryList(){
+    historyListEl.innerHTML = "";
+    if(voyageHistory.length===0){
+      historyListEl.innerHTML = '<div class="hist-empty">No saved calculations yet &mdash; use &ldquo;Save to history&rdquo; to archive the current setup.</div>';
+      return;
+    }
+    voyageHistory.forEach(entry => {
+      const row = document.createElement("div");
+      row.className = "hist-row";
+      const savedLocal = DT.fromISO(entry.savedAt).toFormat("dd LLL yyyy, HH:mm");
+      row.innerHTML =
+        '<div class="hist-route">'+entry.depLabel+' &rarr; '+entry.arrLabel+'</div>'+
+        '<div class="hist-meta">'+entry.distance.toLocaleString()+' nm &middot; '+entry.speed.toFixed(1)+' kn &middot; ETA '+entry.etaText+'</div>'+
+        '<div class="hist-saved">Saved '+savedLocal+' UTC</div>';
+      const actions = document.createElement("div");
+      actions.className = "hist-actions";
+      const loadBtn = document.createElement("button");
+      loadBtn.type = "button"; loadBtn.className = "btn btn-accent"; loadBtn.textContent = "Load";
+      loadBtn.addEventListener("click", () => loadHistoryEntry(entry.id));
+      const delBtn = document.createElement("button");
+      delBtn.type = "button"; delBtn.className = "btn hist-del"; delBtn.textContent = "Delete";
+      delBtn.addEventListener("click", () => deleteHistoryEntry(entry.id));
+      actions.appendChild(loadBtn); actions.appendChild(delBtn);
+      row.appendChild(actions);
+      historyListEl.appendChild(row);
+    });
+  }
+
+  function deleteHistoryEntry(id){
+    voyageHistory = voyageHistory.filter(e => e.id !== id);
+    saveHistoryLog();
+    renderHistoryList();
+  }
+
+  function loadHistoryEntry(id){
+    const entry = voyageHistory.find(e => e.id === id);
+    if(!entry) return;
+    state = JSON.parse(JSON.stringify(entry.state));
+    if(state.dep.portIndex!=null && !PORTS_ALL[state.dep.portIndex]) state.dep.portIndex = null;
+    if(state.arr.portIndex!=null && !PORTS_ALL[state.arr.portIndex]) state.arr.portIndex = null;
+    state.altArrivals = normalizeAltArrivals(state.altArrivals, state.speed);
+    saveState();
+    hydrateUI();
+    closeHistory();
+    toast("Loaded from history");
+  }
+
+  function openHistory(){
+    renderHistoryList();
+    historyOverlay.hidden = false;
+    requestAnimationFrame(() => historyOverlay.classList.add("open"));
+  }
+  function closeHistory(){
+    historyOverlay.classList.remove("open");
+    setTimeout(() => { historyOverlay.hidden = true; }, 200);
+  }
+  historyBtn.addEventListener("click", openHistory);
+  historySaveBtn.addEventListener("click", archiveCurrent);
+  historyCloseBtn.addEventListener("click", closeHistory);
+  historyOverlay.addEventListener("click", (e) => { if(e.target===historyOverlay) closeHistory(); });
+
+  let clearConfirmTimer = null;
+  historyClearBtn.addEventListener("click", () => {
+    if(historyClearBtn.dataset.confirm === "1"){
+      voyageHistory = [];
+      saveHistoryLog();
+      renderHistoryList();
+      historyClearBtn.dataset.confirm = "";
+      historyClearBtn.textContent = "Clear history";
+      historyClearBtn.classList.remove("hist-del");
+      clearTimeout(clearConfirmTimer);
+      return;
+    }
+    historyClearBtn.dataset.confirm = "1";
+    historyClearBtn.textContent = "Tap again to confirm";
+    historyClearBtn.classList.add("hist-del");
+    clearTimeout(clearConfirmTimer);
+    clearConfirmTimer = setTimeout(() => {
+      historyClearBtn.dataset.confirm = "";
+      historyClearBtn.textContent = "Clear history";
+      historyClearBtn.classList.remove("hist-del");
+    }, 3000);
+  });
+
+  const bottomBarEl = document.getElementById("bottomBar");
+  function scrollToBottomBarTarget(){
+    const activeTab = document.querySelector(".main-tab.active");
+    const targetId = (activeTab && activeTab.dataset.tab === "consumption") ? "robSummaryCard" : "resultCard";
+    const el = document.getElementById(targetId);
+    if(el) el.scrollIntoView({behavior: "smooth", block: "start"});
+  }
+  bottomBarEl.addEventListener("click", scrollToBottomBarTarget);
+  bottomBarEl.addEventListener("keydown", (e) => {
+    if(e.key==="Enter" || e.key===" "){ e.preventDefault(); scrollToBottomBarTarget(); }
+  });
+
+  /* ---------------- Hydrate UI from state (init + after loading history) ---------------- */
+  function hydrateUI(){
+    dtgInput.value = state.distance; speedInput.value = state.speed;
+    varianceInput.value = state.variance; intervalInput.value = state.interval;
+    reqToggle.checked = state.reqEnabled; reqBody.hidden = !state.reqEnabled;
+    reqDateEl.value = state.reqDate; reqTimeEl.value = state.reqTime; reqZoneEl.value = state.reqZone;
+    renderLocationBlock(depLocEl, state.dep, () => { saveState(); render(); });
+    renderLocationBlock(arrLocEl, state.arr, () => { saveState(); populateRobRefOptions(); render(); });
+    renderAltArrivals();
+    populateRobRefOptions();
+    depDate.value = state.dateStr; depTime.value = state.timeStr;
+    fwRob.value = state.consumption.freshWater.rob;
+    fwCons.value = state.consumption.freshWater.consPerDay;
+    fwProd.value = state.consumption.freshWater.prodPerDay;
+    fillUnitSelect(fuelUnitSelect, state.consumption.units.fuels);
+    fillUnitSelect(lubeUnitSelect, state.consumption.units.lubeOils);
+    fillUnitSelect(fwUnitSelect, state.consumption.freshWater.unit);
+    applyUnitLabels();
+    renderConsumableList(fuelListEl, "fuels");
+    renderConsumableList(lubeListEl, "lubeOils");
+    render();
+  }
+
+  /* ---------------- Main tabs ---------------- */
+  const mainTabs = document.querySelectorAll(".main-tab");
+  const tabPanelEta = document.getElementById("tabPanelEta");
+  const tabPanelConsumption = document.getElementById("tabPanelConsumption");
+  mainTabs.forEach(t => t.addEventListener("click", () => {
+    mainTabs.forEach(x => x.classList.toggle("active", x===t));
+    const tab = t.dataset.tab;
+    tabPanelEta.hidden = tab!=="eta";
+    tabPanelConsumption.hidden = tab!=="consumption";
+    if(tab==="consumption") refreshAllConsumption();
+    updateBottomBar();
+  }));
+
+  const fuelListEl = document.getElementById("fuelList");
+  const lubeListEl = document.getElementById("lubeList");
+  wireAddItemForm("addFuelToggle","addFuelForm","newFuelName","newFuelCancel","newFuelSave","fuels", fuelListEl);
+  wireAddItemForm("addLubeToggle","addLubeForm","newLubeName","newLubeCancel","newLubeSave","lubeOils", lubeListEl);
+
+  /* ---------------- Init ---------------- */
+  loadState();
+  try{
+    const savedTheme = localStorage.getItem(THEME_KEY);
+    if(savedTheme) state.theme = savedTheme;
+  }catch(e){}
+  applyTheme();
+
+  hydrateUI();
+  if(!state.dateStr || !state.timeStr) setNow();
+})();
+
+// Registering this makes the page installable ("Add to Home Screen" / "Install
+// app") and lets it keep working offline after the first visit. Failing here
+// (unsupported browser, opened from file://) is harmless — the calculator
+// itself needs nothing beyond plain HTML/CSS/JS to run.
+if("serviceWorker" in navigator){
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("sw.js").catch(() => {});
+  });
+}
+</script>
+</body>
+</html>
