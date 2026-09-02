@@ -3285,12 +3285,9 @@
     let total = 0, any = false;
     state.routeLegs.forEach(leg => { const d = parseFloat(leg.distance); if(isFinite(d)){ total += d; any = true; } });
     if(!any){ legTotalNote.hidden = true; return; }
-    const mainDist = parseFloat(state.distance);
-    const mismatch = isFinite(mainDist) && Math.abs(total - mainDist) > 0.5;
     legTotalNote.hidden = false;
-    legTotalNote.className = "req-note"+(mismatch ? " warn" : "");
-    legTotalNote.textContent = "Route legs total: "+total.toLocaleString(undefined,{maximumFractionDigits:1})+" nm"+
-      (mismatch ? " — doesn't match Distance to go ("+mainDist.toLocaleString()+" nm)" : "");
+    legTotalNote.className = "req-note";
+    legTotalNote.textContent = "Route legs total: "+total.toLocaleString(undefined,{maximumFractionDigits:1})+" nm";
   }
 
   function applyConsumModeUI(){
@@ -3772,10 +3769,42 @@
   });
 
   const bottomBarEl = document.getElementById("bottomBar");
+  // The ETA speed-range section is rebuilt fresh on every renderResult(), so
+  // its toggle button/body are re-queried by id here rather than captured
+  // once — mirrors how finish()'s own toggle closure reaches them.
+  function expandEtaRangeIfCollapsed(){
+    if(!state.etaSpeedRangeCollapsed) return;
+    state.etaSpeedRangeCollapsed = false;
+    saveState();
+    const body = document.getElementById("etaRangeBody");
+    const btn = document.getElementById("etaRangeToggle");
+    if(body) body.hidden = false;
+    if(btn){ btn.classList.remove("collapsed"); btn.setAttribute("aria-expanded", "true"); }
+  }
   function scrollToBottomBarTarget(){
     const activeTab = document.querySelector(".main-tab.active");
-    const targetId = (activeTab && activeTab.dataset.tab === "consumption") ? "robSummaryCard" : "resultCard";
-    const el = document.getElementById(targetId);
+    const onConsumption = activeTab && activeTab.dataset.tab === "consumption";
+    let el;
+    if(onConsumption){
+      if(state.consumptionMode === "region"){
+        if(state.regionRobSummaryCollapsed){
+          state.regionRobSummaryCollapsed = false;
+          saveState();
+          applyRegionRobRangeCollapsedState();
+        }
+        el = document.getElementById("regionRobSummaryCard");
+      } else {
+        if(state.robSpeedRangeCollapsed){
+          state.robSpeedRangeCollapsed = false;
+          saveState();
+          applyRobRangeCollapsedState();
+        }
+        el = document.getElementById("robSummaryCard");
+      }
+    } else {
+      expandEtaRangeIfCollapsed();
+      el = document.getElementById("etaRangeTitle") || document.getElementById("resultCard");
+    }
     if(el) el.scrollIntoView({behavior: "smooth", block: "start"});
   }
   bottomBarEl.addEventListener("click", scrollToBottomBarTarget);
