@@ -719,16 +719,6 @@
             <input type="number" id="speed" inputmode="decimal" min="0" step="any" placeholder="0.0">
           </div>
         </div>
-        <div class="field-row">
-          <div class="field">
-            <label for="variance">Speed variance ± (kn)</label>
-            <input type="number" id="variance" inputmode="decimal" min="0" step="any" placeholder="0">
-          </div>
-          <div class="field">
-            <label for="interval">Interval (kn)</label>
-            <input type="number" id="interval" inputmode="decimal" min="0.1" step="any" placeholder="0.5">
-          </div>
-        </div>
       </div>
     </section>
 
@@ -2213,8 +2203,9 @@
   const depTime = document.getElementById("depTime");
   const dtgInput = document.getElementById("dtg");
   const speedInput = document.getElementById("speed");
-  const varianceInput = document.getElementById("variance");
-  const intervalInput = document.getElementById("interval");
+  // Speed variance / interval now live inside the ETA-across-speed-range
+  // section of #resultBody (rebuilt on every render), not as static elements
+  // here — see wireRangeControls(), called from renderResult().
 
   function setNow(){
     const zi = getZoneInfo(state.dep);
@@ -2235,9 +2226,6 @@
     renderAltArrivals();
     render();
   });
-  varianceInput.addEventListener("input", () => { state.variance = varianceInput.value; saveState(); render(); });
-  intervalInput.addEventListener("input", () => { state.interval = intervalInput.value; saveState(); render(); });
-
   /* ---------------- Required speed inputs ---------------- */
   const reqToggle = document.getElementById("reqToggle");
   const reqBody = document.getElementById("reqBody");
@@ -2369,7 +2357,34 @@
     });
   }
 
+  // Speed variance / interval control the "ETA across speed range" table, so
+  // they live right inside that section (rebuilt fresh into #resultBody on
+  // every render — see renderResult()) rather than as static fields
+  // elsewhere. Wires the freshly-inserted #variance/#interval each time.
+  function wireRangeControls(){
+    const varianceEl = document.getElementById("variance");
+    const intervalEl = document.getElementById("interval");
+    if(varianceEl){
+      varianceEl.value = state.variance;
+      varianceEl.addEventListener("input", () => { state.variance = varianceEl.value; saveState(); render(); });
+    }
+    if(intervalEl){
+      intervalEl.value = state.interval;
+      intervalEl.addEventListener("input", () => { state.interval = intervalEl.value; saveState(); render(); });
+    }
+  }
+
   function renderResult(){
+    // #resultBody gets fully rebuilt below, which would normally steal focus
+    // away from the variance/interval inputs (they live inside it) on every
+    // keystroke. Remember focus + cursor position here and restore it after,
+    // so typing into either field isn't interrupted.
+    const active = document.activeElement;
+    let refocus = null;
+    if(active && resultBody.contains(active) && (active.id==="variance" || active.id==="interval")){
+      refocus = {id: active.id, start: active.selectionStart, end: active.selectionEnd};
+    }
+
     // Self-heal a stale/deleted port selection, then figure out which port
     // the whole card — main ETA figure, bottom bar, and the speed-range
     // table below — is currently focused on. The switcher (built below) is
@@ -2393,18 +2408,39 @@
       '</div>';
     }
 
+    // The speed-range controls always have a home in this card — heading,
+    // variance/interval fields, and (if any alt ports exist) the switcher —
+    // regardless of whether a table can currently be shown. That's what
+    // keeps the fields reachable even before variance>0 has ever been set.
+    const rangeControlsHtml =
+      '<div class="field-row" style="margin-bottom:12px;">'+
+        '<div class="field"><label for="variance">Speed variance &plusmn; (kn)</label><input type="number" id="variance" inputmode="decimal" min="0" step="any" placeholder="0"></div>'+
+        '<div class="field"><label for="interval">Interval (kn)</label><input type="number" id="interval" inputmode="decimal" min="0.1" step="any" placeholder="0.5"></div>'+
+      '</div>';
+
+    function finish(){
+      wirePortSwitchButtons();
+      wireRangeControls();
+      if(refocus){
+        const el = document.getElementById(refocus.id);
+        if(el){ el.focus(); try{ el.setSelectionRange(refocus.start, refocus.end); }catch(e){} }
+      }
+      updateBottomBar();
+    }
+
     if(!calc){
-      // Keep the switcher visible even when the focused port's own data is
-      // incomplete, so switching to a working port is always possible.
-      resultBody.innerHTML = switchHtml +
-        '<p class="result-empty"'+(switchHtml?' style="margin-top:12px;"':'')+'>'+
+      // Keep the range section (and switcher, if applicable) visible even
+      // when the focused port's own data is incomplete, so switching to a
+      // working port — or just setting a variance for later — stays possible.
+      resultBody.innerHTML =
+        '<p class="result-empty">'+
         (focusAlt ? "Enter this port&rsquo;s distance and speed to see its ETA."
                   : "Enter a departure location &amp; time, distance to go and speed to see the ETA.")+
-        '</p>';
+        '</p>'+
+        '<div class="var-wrap"><h3>'+escHtml("ETA Across Speed Range — "+focusPortLabel)+'</h3>'+rangeControlsHtml+switchHtml+'</div>';
       lastEtaBBText = "— enter voyage details —";
       lastEtaBBUtcText = "";
-      wirePortSwitchButtons();
-      updateBottomBar();
+      finish();
       return;
     }
     const etaArr = focusArrZI ? calc.etaUTC.setZone(focusArrZI.zone) : null;
@@ -2438,11 +2474,16 @@
     '</div>';
 
     const rows = speedTable(calc);
+    html += '<div class="var-wrap"><h3>'+escHtml("ETA Across Speed Range — "+focusPortLabel)+'</h3>'+rangeControlsHtml+switchHtml;
     if(rows.length){
-      const speedTableTitle = "ETA Across Speed Range — "+focusPortLabel;
-      html += '<div class="var-wrap"><h3>'+escHtml(speedTableTitle)+'</h3>'+switchHtml+
-        '<div style="overflow-x:auto;"><table class="var-table"><thead><tr><th>Speed</th><th>Passage</th><th>ETA '+(focusArrZI?"(Arrival LT)":"(UTC)")+'</th></tr></thead><tbody id="varTbody"></tbody></table></div></div>';
-      resultBody.innerHTML = html;
+      html += '<div style="overflow-x:auto;"><table class="var-table"><thead><tr><th>Speed</th><th>Passage</th><th>ETA '+(focusArrZI?"(Arrival LT)":"(UTC)")+'</th></tr></thead><tbody id="varTbody"></tbody></table></div>';
+    } else {
+      html += '<p class="result-empty">Set a speed variance above to see a range.</p>';
+    }
+    html += '</div>';
+    resultBody.innerHTML = html;
+
+    if(rows.length){
       const tbody = resultBody.querySelector("#varTbody");
       rows.forEach(r => {
         const tr = document.createElement("tr");
@@ -2457,15 +2498,8 @@
           '<td>'+shown.toFormat("dd LLL, HH:mm")+utcSub+'</td>';
         tbody.appendChild(tr);
       });
-    } else {
-      // No variance configured, so there's no table — still show the
-      // switcher (at the bottom, same spot it'd otherwise occupy) so port
-      // switching keeps working even with the speed-range feature off.
-      if(switchHtml) html += '<div style="margin-top:16px; padding-top:14px; border-top:1px dashed var(--border);">'+switchHtml+'</div>';
-      resultBody.innerHTML = html;
     }
-    wirePortSwitchButtons();
-    updateBottomBar();
+    finish();
   }
 
   function renderRequired(){
@@ -3100,7 +3134,8 @@
   /* ---------------- Hydrate UI from state (init + after loading history) ---------------- */
   function hydrateUI(){
     dtgInput.value = state.distance; speedInput.value = state.speed;
-    varianceInput.value = state.variance; intervalInput.value = state.interval;
+    // variance/interval inputs are (re)created inside #resultBody on every
+    // render — wireRangeControls() sets their value, nothing to do here.
     reqToggle.checked = state.reqEnabled; reqBody.hidden = !state.reqEnabled;
     reqDateEl.value = state.reqDate; reqTimeEl.value = state.reqTime; reqZoneEl.value = state.reqZone;
     renderLocationBlock(depLocEl, state.dep, () => { saveState(); render(); });
