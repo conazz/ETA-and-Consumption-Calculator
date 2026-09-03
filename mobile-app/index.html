@@ -344,6 +344,20 @@
   }
   input::placeholder{ color:var(--text-dim); font-family:var(--font-body); }
   input:focus-visible, select:focus-visible{ outline:2px solid var(--accent); outline-offset:1px; }
+  /* iOS Safari renders <input type="time">'s internal HH:MM segments with its
+     own metrics that don't reflow to fit a custom monospace font at this
+     size, so the text overflows past the input's own border — Chrome/Android
+     isn't affected, which is why this is scoped to an iOS-Safari-only
+     feature query (-webkit-touch-callout is exclusive to iOS Safari; no
+     other engine, including desktop Safari, matches it) rather than changed
+     for every platform. */
+  @supports (-webkit-touch-callout: none){
+    input[type="time"]{
+      font-family:-apple-system, BlinkMacSystemFont, sans-serif;
+      font-size:15px;
+      padding:9px 8px;
+    }
+  }
   .row-gap{ display:flex; flex-direction:column; gap:12px; }
   .btn-now{
     align-self:flex-start;
@@ -551,10 +565,23 @@
   .collapsible-title:hover{ text-decoration:underline; }
   #etaRangeTitle.collapsible-title{ color:var(--accent); }
   /* Collapsible-section header (ETA/ROB across speed range) — the chevron
-     rotates to show state; the section body's own [hidden] does the rest
-     (default UA rule, since no rule here sets `display` unconditionally on
-     it — see the .sheet-overlay note further down for why that matters). */
+     rotates to show state; the section body animates open/closed via
+     .collapse-wrap/.collapse-inner below rather than an instant [hidden]. */
   .var-wrap-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+  /* Elegant expand/collapse for the three speed-range/summary tables (ETA
+     Across Speed Range, ROB Across Speed Range, Projected ROB Summary):
+     animating a grid track from 1fr to 0fr smoothly collapses content of any
+     height (row count varies with data) without knowing that height up
+     front — the classic alternative to animating max-height, which either
+     needs a hardcoded cap or a JS-measured value kept in sync with content.
+     min-height:0 on the inner item is required or the track can't shrink
+     past the content's own intrinsic minimum size. */
+  .collapse-wrap{
+    display:grid; grid-template-rows:1fr;
+    transition:grid-template-rows .32s cubic-bezier(.4,0,.2,1);
+  }
+  .collapse-wrap.collapsed{ grid-template-rows:0fr; }
+  .collapse-inner{ overflow:hidden; min-height:0; }
   .var-wrap-head h3{ margin:0; }
   .nameplate-title-row{ display:flex; align-items:center; gap:6px; }
   .collapse-btn{
@@ -599,7 +626,7 @@
   }
   /* Switches which arrival port's speed-range table is shown (ETA tab) — only
      rendered when at least one alternative arrival port exists. */
-  .port-switch{ display:flex; flex-wrap:wrap; justify-content:center; gap:8px; margin:-2px 0 12px; }
+  .port-switch{ display:flex; flex-wrap:wrap; justify-content:center; gap:8px; margin:14px 0 12px; }
   .port-switch-btn{
     font-family:var(--font-body); font-size:13px; font-weight:600;
     padding:8px 16px; border-radius:999px;
@@ -693,6 +720,106 @@
   .hist-actions .btn{ padding:7px 12px; font-size:12px; }
   .hist-del{ color:var(--danger); border-color:var(--danger); }
 
+  /* ---------- Home screen ---------- */
+  .home-view{
+    max-width:480px; margin:0 auto;
+    padding:16px 20px calc(28px + env(safe-area-inset-bottom));
+  }
+  .home-topbar{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:calc(10px + env(safe-area-inset-top)) 0 0;
+  }
+  .home-icon-tile{
+    width:104px; height:104px; margin:24px auto 20px;
+    display:flex; align-items:center; justify-content:center;
+    background:var(--surface); border:1px solid var(--border); border-radius:22px;
+    box-shadow:0 6px 18px -10px var(--shadow);
+  }
+  .home-icon-tile svg{ width:52px; height:52px; color:var(--accent); }
+  .home-title{
+    font-family:var(--font-display); font-weight:700; font-size:24px;
+    text-align:center; letter-spacing:0.01em; margin:0 0 8px; line-height:1.25;
+    color:var(--text); text-shadow:0 0 18px color-mix(in srgb, var(--accent) 55%, transparent);
+  }
+  .home-subtitle{
+    text-align:center; font-weight:700; font-size:12.5px; letter-spacing:0.08em;
+    text-transform:uppercase; color:var(--brass); margin:0 0 10px;
+    text-shadow:0 0 14px color-mix(in srgb, var(--brass) 55%, transparent);
+  }
+  .home-byline{ text-align:center; font-style:italic; font-size:12.5px; color:var(--text-dim); margin:0 0 22px; }
+  .home-divider{ height:1px; background:var(--border); width:64px; margin:0 auto 24px; }
+  .home-grid{ display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  .home-card{
+    display:flex; flex-direction:column; align-items:center; gap:10px;
+    text-align:center; padding:24px 12px; cursor:pointer;
+    font-family:var(--font-body); color:var(--text); font-weight:600; font-size:13.5px;
+    transition:border-color .15s;
+  }
+  .home-card:hover{ border-color:var(--accent); }
+  .home-card:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
+  .home-card-icon{
+    width:52px; height:52px; border-radius:50%; flex:none;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .home-card-icon svg{ width:24px; height:24px; }
+  .home-card-eta .home-card-icon{ background:color-mix(in srgb, var(--accent) 18%, var(--surface2)); color:var(--accent); }
+  .home-card-consum .home-card-icon{ background:color-mix(in srgb, var(--brass) 18%, var(--surface2)); color:var(--brass); }
+  .home-footer{ margin-top:26px; text-align:center; font-size:11px; color:var(--text-dim); }
+
+  /* ---------- Sidebar ---------- */
+  /* Same fixed-overlay + hidden/.open pattern as .sheet-overlay above (see the
+     note near it), just anchored left with translateX instead of a bottom
+     sheet's translateY — a separate class rather than reusing .sheet-overlay/
+     .sheet directly since the panel is full-height and edge-anchored, not a
+     bottom drawer. */
+  .sidebar-overlay{
+    position:fixed; inset:0; z-index:80;
+    background:rgba(4,10,16,0.55);
+    opacity:0; transition:opacity .2s;
+    pointer-events:none;
+  }
+  .sidebar-overlay:not([hidden]){ display:block; }
+  .sidebar-overlay.open{ opacity:1; pointer-events:auto; }
+  .sidebar-panel{
+    position:absolute; top:0; left:0; bottom:0;
+    width:82%; max-width:300px;
+    background:var(--surface);
+    border-right:1px solid var(--border);
+    display:flex; flex-direction:column;
+    transform:translateX(-100%);
+    transition:transform .22s;
+    padding:calc(20px + env(safe-area-inset-top)) 18px calc(20px + env(safe-area-inset-bottom));
+    overflow-y:auto;
+  }
+  .sidebar-overlay.open .sidebar-panel{ transform:translateX(0); }
+  .sidebar-brand{ display:flex; flex-direction:column; align-items:center; text-align:center; gap:8px; margin:8px 0 4px; }
+  .sidebar-brand svg{ width:34px; height:34px; color:var(--accent); }
+  .sidebar-brand-name{ font-family:var(--font-display); font-weight:600; font-size:13.5px; letter-spacing:0.02em; }
+  .sidebar-version{ font-size:11px; color:var(--text-dim); font-family:var(--font-mono); }
+  .sidebar-divider{ height:1px; background:var(--border); margin:16px 0; }
+  .sidebar-row{
+    display:flex; align-items:center; gap:12px; width:100%;
+    padding:11px 6px; border-radius:8px;
+    color:var(--text); font-size:13.5px; font-weight:500; text-align:left;
+    font-family:var(--font-body); background:none; border:none; cursor:pointer;
+  }
+  .sidebar-row:hover{ background:var(--surface2); }
+  .sidebar-row svg{ width:18px; height:18px; color:var(--text-dim); flex:none; }
+  .sidebar-close{ position:absolute; top:calc(14px + env(safe-area-inset-top)); right:14px; }
+  .info-body{ font-size:13.5px; line-height:1.6; color:var(--text); }
+  .info-body .placeholder-note{ display:block; margin-top:10px; color:var(--text-dim); font-size:11.5px; font-style:italic; }
+  .info-body p{ margin:0 0 12px; }
+  .info-body h4{
+    font-family:var(--font-display); font-weight:600; font-size:12px;
+    letter-spacing:0.06em; text-transform:uppercase; color:var(--accent);
+    margin:18px 0 8px;
+  }
+  .info-body h4:first-child{ margin-top:0; }
+  .info-body ul{ margin:0 0 12px; padding-left:18px; }
+  .info-body li{ margin-bottom:6px; }
+  .info-body .info-meta{ display:block; color:var(--text-dim); font-size:11.5px; margin-bottom:16px; }
+  .info-body a{ color:var(--accent); }
+
   /* ---------- Toast ---------- */
   .toast{
     position:fixed; left:50%; bottom:96px; transform:translate(-50%, 10px);
@@ -706,13 +833,86 @@
 
 <div class="app">
 
+<div id="homeView">
+  <div class="home-view">
+    <div class="home-topbar">
+      <button class="icon-btn" id="hamburgerBtnHome" type="button" aria-label="Open menu">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M3 12h18M3 18h18"></path></svg>
+      </button>
+      <button class="theme-toggle" id="themeBtnHome" type="button" aria-label="Change theme"></button>
+    </div>
+
+    <div class="home-icon-tile">
+      <svg viewBox="0 0 100 100" aria-hidden="true">
+        <defs>
+          <filter id="logoGlowHome" x="-60%" y="-60%" width="220%" height="220%">
+            <feGaussianBlur stdDeviation="3.2" result="blur"></feGaussianBlur>
+            <feMerge><feMergeNode in="blur"></feMergeNode><feMergeNode in="SourceGraphic"></feMergeNode></feMerge>
+          </filter>
+        </defs>
+        <circle cx="50" cy="50" r="38" fill="none" stroke="#3fd8ff" stroke-width="4" filter="url(#logoGlowHome)"></circle>
+        <g stroke="#3fd8ff" stroke-width="3" stroke-linecap="round" filter="url(#logoGlowHome)">
+          <line x1="50" y1="16" x2="50" y2="24"></line>
+          <line x1="50" y1="76" x2="50" y2="84"></line>
+          <line x1="16" y1="50" x2="24" y2="50"></line>
+          <line x1="76" y1="50" x2="84" y2="50"></line>
+        </g>
+        <line x1="50" y1="50" x2="34" y2="70" stroke="#ff2fb0" stroke-width="5" stroke-linecap="round" filter="url(#logoGlowHome)"></line>
+        <line x1="50" y1="50" x2="68" y2="26" stroke="#3fd8ff" stroke-width="3.5" stroke-linecap="round" filter="url(#logoGlowHome)"></line>
+        <circle cx="50" cy="50" r="4.5" fill="#ff2fb0" filter="url(#logoGlowHome)"></circle>
+      </svg>
+    </div>
+    <h1 class="home-title">ETA and Consumption Calculator</h1>
+    <p class="home-subtitle">For Deck Officers</p>
+    <p class="home-byline">by: 2/O C.V. Millares</p>
+    <div class="home-divider"></div>
+
+    <div class="home-grid">
+      <button type="button" class="card home-card home-card-eta" id="homeCardEta">
+        <span class="home-card-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 3"></path></svg>
+        </span>
+        ETA Calculator
+      </button>
+      <button type="button" class="card home-card home-card-consum" id="homeCardConsumption">
+        <span class="home-card-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"></path><path d="M7 15l4-4 3 3 5-6"></path></svg>
+        </span>
+        Consumption Calculator
+      </button>
+    </div>
+
+    <p class="home-footer" id="homeFooter"></p>
+  </div>
+</div>
+
+<div id="appView" hidden>
+
   <div class="topbar">
     <div class="brand">
-      <svg class="brand-mark" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <circle cx="12" cy="12" r="9.2"></circle>
-        <path d="M12 4.2V7M12 17v2.8M4.2 12H7M17 12h2.8"></path>
-        <path d="M12 12 15.5 8.8" stroke-width="2"></path>
-        <circle cx="12" cy="12" r="1.3" fill="currentColor" stroke="none"></circle>
+      <button class="icon-btn" id="backToHomeBtn" type="button" aria-label="Back to home">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"></path></svg>
+      </button>
+      <button class="icon-btn" id="hamburgerBtnApp" type="button" aria-label="Open menu">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M3 12h18M3 18h18"></path></svg>
+      </button>
+      <svg class="brand-mark" width="26" height="26" viewBox="0 0 100 100" aria-hidden="true">
+        <defs>
+          <filter id="logoGlowTopbar" x="-60%" y="-60%" width="220%" height="220%">
+            <feGaussianBlur stdDeviation="3.2" result="blur"></feGaussianBlur>
+            <feMerge><feMergeNode in="blur"></feMergeNode><feMergeNode in="SourceGraphic"></feMergeNode></feMerge>
+          </filter>
+        </defs>
+        <circle cx="50" cy="50" r="38" fill="none" stroke="#3fd8ff" stroke-width="4" filter="url(#logoGlowTopbar)"></circle>
+        <g stroke="#3fd8ff" stroke-width="3" stroke-linecap="round" filter="url(#logoGlowTopbar)">
+          <line x1="50" y1="16" x2="50" y2="24"></line>
+          <line x1="50" y1="76" x2="50" y2="84"></line>
+          <line x1="16" y1="50" x2="24" y2="50"></line>
+          <line x1="76" y1="50" x2="84" y2="50"></line>
+        </g>
+        <line x1="50" y1="50" x2="34" y2="70" stroke="#ff2fb0" stroke-width="5" stroke-linecap="round" filter="url(#logoGlowTopbar)"></line>
+        <line x1="50" y1="50" x2="68" y2="26" stroke="#3fd8ff" stroke-width="3.5" stroke-linecap="round" filter="url(#logoGlowTopbar)"></line>
+        <circle cx="50" cy="50" r="4.5" fill="#ff2fb0" filter="url(#logoGlowTopbar)"></circle>
       </svg>
       <div class="brand-text">
         <h1 id="appTitle">ETA Calculator</h1>
@@ -942,10 +1142,12 @@
         </span>
         <span class="rivet"></span>
       </p>
-      <div id="robSummaryBody">
-        <div id="fuelSpeedSummary"></div>
-        <div id="fwSpeedSummary"></div>
-        <div id="lubeSpeedSummary"></div>
+      <div id="robSummaryBody" class="collapse-wrap">
+        <div class="collapse-inner">
+          <div id="fuelSpeedSummary"></div>
+          <div id="fwSpeedSummary"></div>
+          <div id="lubeSpeedSummary"></div>
+        </div>
       </div>
     </section>
 
@@ -960,7 +1162,9 @@
         </span>
         <span class="rivet"></span>
       </p>
-      <div id="regionRobSummaryBody"></div>
+      <div id="regionRobSummaryBody" class="collapse-wrap">
+        <div class="collapse-inner" id="regionRobSummaryInner"></div>
+      </div>
     </section>
 
     </div>
@@ -985,8 +1189,12 @@
   </footer>
 
 </div>
+<!-- /#appView -->
 
-<div class="bottom-bar">
+</div>
+<!-- /.app -->
+
+<div class="bottom-bar" id="bottomBarWrap">
   <div class="bottom-bar-inner" id="bottomBar" role="button" tabindex="0" aria-label="Jump to ETA">
     <div>
       <div class="bb-label" id="bbLabel">ETA</div>
@@ -1010,6 +1218,84 @@
     </div>
     <div class="sheet-body" id="historyList"></div>
     <button class="btn" id="historyClearBtn" type="button" style="margin-top:12px;">Clear history</button>
+  </div>
+</div>
+
+<div class="sidebar-overlay" id="sidebarOverlay" hidden>
+  <div class="sidebar-panel" role="dialog" aria-modal="true" aria-label="Menu">
+    <button class="icon-btn sidebar-close" id="sidebarCloseBtn" type="button" aria-label="Close menu">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"></path></svg>
+    </button>
+    <div class="sidebar-brand">
+      <svg viewBox="0 0 100 100" aria-hidden="true">
+        <defs>
+          <filter id="logoGlowSidebar" x="-60%" y="-60%" width="220%" height="220%">
+            <feGaussianBlur stdDeviation="3.2" result="blur"></feGaussianBlur>
+            <feMerge><feMergeNode in="blur"></feMergeNode><feMergeNode in="SourceGraphic"></feMergeNode></feMerge>
+          </filter>
+        </defs>
+        <circle cx="50" cy="50" r="38" fill="none" stroke="#3fd8ff" stroke-width="4" filter="url(#logoGlowSidebar)"></circle>
+        <g stroke="#3fd8ff" stroke-width="3" stroke-linecap="round" filter="url(#logoGlowSidebar)">
+          <line x1="50" y1="16" x2="50" y2="24"></line>
+          <line x1="50" y1="76" x2="50" y2="84"></line>
+          <line x1="16" y1="50" x2="24" y2="50"></line>
+          <line x1="76" y1="50" x2="84" y2="50"></line>
+        </g>
+        <line x1="50" y1="50" x2="34" y2="70" stroke="#ff2fb0" stroke-width="5" stroke-linecap="round" filter="url(#logoGlowSidebar)"></line>
+        <line x1="50" y1="50" x2="68" y2="26" stroke="#3fd8ff" stroke-width="3.5" stroke-linecap="round" filter="url(#logoGlowSidebar)"></line>
+        <circle cx="50" cy="50" r="4.5" fill="#ff2fb0" filter="url(#logoGlowSidebar)"></circle>
+      </svg>
+      <div class="sidebar-brand-name">ETA and Consumption Calculator</div>
+      <div class="sidebar-version" id="sidebarVersion"></div>
+    </div>
+    <div class="sidebar-divider"></div>
+    <button type="button" class="sidebar-row" data-info="about">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 16v-5"></path><path d="M12 8h.01"></path></svg>
+      About
+    </button>
+    <button type="button" class="sidebar-row" id="shareAppBtn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><path d="M8.6 10.5l6.8-3.9"></path><path d="M8.6 13.5l6.8 3.9"></path></svg>
+      Share App
+    </button>
+    <button type="button" class="sidebar-row" data-info="feedback">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v13H7l-3 3z"></path></svg>
+      Send Feedback
+    </button>
+    <div class="sidebar-divider"></div>
+    <button type="button" class="sidebar-row" data-info="disclaimer">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 4v5c0 5-3.4 7.7-8 9-4.6-1.3-8-4-8-9V7z"></path><path d="M9.5 12l1.8 1.8L15 10"></path></svg>
+      Disclaimer
+    </button>
+    <button type="button" class="sidebar-row" data-info="privacy">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="10" rx="2"></rect><path d="M8 10V7a4 4 0 0 1 8 0v3"></path></svg>
+      Privacy Policy
+    </button>
+    <button type="button" class="sidebar-row" data-info="terms">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3h8l4 4v14H7z"></path><path d="M15 3v4h4"></path><path d="M9.5 12h6M9.5 15.5h6"></path></svg>
+      Terms Of Service
+    </button>
+    <button type="button" class="sidebar-row" data-info="faq">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.5 8.5 0 1 1-4-7.2"></path><path d="M21 3v6h-6"></path></svg>
+      FAQ
+    </button>
+    <div class="sidebar-divider"></div>
+    <button type="button" class="sidebar-row" data-info="settings">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"></path></svg>
+      Settings
+    </button>
+  </div>
+</div>
+
+<div class="sheet-overlay" id="infoOverlay" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-label="Info">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <h2 id="infoTitle"></h2>
+      <button class="icon-btn" id="infoCloseBtn" type="button" aria-label="Close">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"></path></svg>
+      </button>
+    </div>
+    <div class="sheet-body"><div class="info-body" id="infoBody"></div></div>
   </div>
 </div>
 
@@ -1907,6 +2193,7 @@
   /* ---------------- Theme ---------------- */
   const THEME_KEY = "bridge-eta-theme";
   const themeBtn = document.getElementById("themeBtn");
+  const themeBtnHome = document.getElementById("themeBtnHome");
   const themeIcons = {
     system: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="14" rx="2"></rect><path d="M8 21h8M12 18v3"></path></svg>',
     light: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4.5"></circle><path d="M12 2.5v2M12 19.5v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M2.5 12h2M19.5 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"></path></svg>',
@@ -1916,13 +2203,19 @@
   function applyTheme(){
     if(state.theme==="system") document.documentElement.removeAttribute("data-theme");
     else document.documentElement.setAttribute("data-theme", state.theme);
-    themeBtn.innerHTML = themeIcons[state.theme] + "<span>"+themeLabels[state.theme]+"</span>";
+    const html = themeIcons[state.theme] + "<span>"+themeLabels[state.theme]+"</span>";
+    themeBtn.innerHTML = html;
+    themeBtnHome.innerHTML = html;
   }
-  themeBtn.addEventListener("click", () => {
+  // One toggle in the app-view top bar, one on the Home screen — both cycle
+  // the same state.theme and stay in sync via applyTheme() updating both.
+  function cycleTheme(){
     state.theme = state.theme==="system" ? "light" : state.theme==="light" ? "dark" : "system";
     applyTheme();
     try{ localStorage.setItem(THEME_KEY, state.theme); }catch(e){}
-  });
+  }
+  themeBtn.addEventListener("click", cycleTheme);
+  themeBtnHome.addEventListener("click", cycleTheme);
 
   /* ---------------- Helpers ---------------- */
   function clamp(v,lo,hi){ return Math.max(lo, Math.min(hi, v)); }
@@ -2599,7 +2892,7 @@
             '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg>'+
           '</button>'+
         '</div>'+
-        '<div class="var-wrap-body" id="etaRangeBody"'+(etaCollapsed?" hidden":"")+'>'+bodyHtml+'</div>'+
+        '<div class="var-wrap-body collapse-wrap'+(etaCollapsed?" collapsed":"")+'" id="etaRangeBody"><div class="collapse-inner">'+bodyHtml+'</div></div>'+
       '</div>';
     }
 
@@ -2613,7 +2906,7 @@
         const toggle = () => {
           state.etaSpeedRangeCollapsed = !state.etaSpeedRangeCollapsed;
           saveState();
-          toggleBody.hidden = state.etaSpeedRangeCollapsed;
+          toggleBody.classList.toggle("collapsed", state.etaSpeedRangeCollapsed);
           toggleBtn.classList.toggle("collapsed", state.etaSpeedRangeCollapsed);
           toggleBtn.setAttribute("aria-expanded", String(!state.etaSpeedRangeCollapsed));
         };
@@ -3121,7 +3414,7 @@
   const robSummaryBody = document.getElementById("robSummaryBody");
   function applyRobRangeCollapsedState(){
     const collapsed = !!state.robSpeedRangeCollapsed;
-    robSummaryBody.hidden = collapsed;
+    robSummaryBody.classList.toggle("collapsed", collapsed);
     robRangeToggle.classList.toggle("collapsed", collapsed);
     robRangeToggle.setAttribute("aria-expanded", String(!collapsed));
   }
@@ -3141,7 +3434,7 @@
   const regionRobSummaryBodyEl = document.getElementById("regionRobSummaryBody");
   function applyRegionRobRangeCollapsedState(){
     const collapsed = !!state.regionRobSummaryCollapsed;
-    regionRobSummaryBodyEl.hidden = collapsed;
+    regionRobSummaryBodyEl.classList.toggle("collapsed", collapsed);
     regionRobRangeToggle.classList.toggle("collapsed", collapsed);
     regionRobRangeToggle.setAttribute("aria-expanded", String(!collapsed));
   }
@@ -3355,7 +3648,7 @@
   }
   function renderRegionRobSummary(){
     if(state.consumptionMode!=="region") return;
-    const el = document.getElementById("regionRobSummaryBody");
+    const el = document.getElementById("regionRobSummaryInner");
     if(!el) return;
     if(!state.routeLegs.length){
       el.innerHTML = '<p class="result-empty">Add at least one route leg to see projected ROB.</p>';
@@ -3778,7 +4071,7 @@
     saveState();
     const body = document.getElementById("etaRangeBody");
     const btn = document.getElementById("etaRangeToggle");
-    if(body) body.hidden = false;
+    if(body) body.classList.remove("collapsed");
     if(btn){ btn.classList.remove("collapsed"); btn.setAttribute("aria-expanded", "true"); }
   }
   function scrollToBottomBarTarget(){
@@ -3856,6 +4149,367 @@
     if(tab==="consumption") refreshAllConsumption();
     updateBottomBar();
   }));
+
+  /* ---------------- Home screen + sidebar ---------------- */
+  const APP_VERSION = "1.0.0";
+  const homeView = document.getElementById("homeView");
+  const appView = document.getElementById("appView");
+  const bottomBarWrap = document.getElementById("bottomBarWrap");
+  document.getElementById("homeFooter").textContent =
+    "v"+APP_VERSION+" · ETA and Consumption Calculator for deck officers";
+  document.getElementById("sidebarVersion").textContent = "v"+APP_VERSION;
+
+  // The bottom-bar's own CSS sets display:flex unconditionally (with a
+  // min-width:880px override to display:none — see the comment on .bottom-bar
+  // itself for why that has to stay a plain rule, not a :not([hidden]) one),
+  // so it's toggled here via inline style rather than the [hidden] attribute
+  // convention used elsewhere, to avoid fighting that existing cascade.
+  function showHome(){
+    appView.hidden = true;
+    homeView.hidden = false;
+    bottomBarWrap.style.display = "none";
+  }
+  function showAppView(){
+    homeView.hidden = true;
+    appView.hidden = false;
+    bottomBarWrap.style.display = "";
+    updateBottomBar();
+  }
+  showHome();
+
+  document.getElementById("homeCardEta").addEventListener("click", () => {
+    document.querySelector('.main-tab[data-tab="eta"]').click();
+    showAppView();
+  });
+  document.getElementById("homeCardConsumption").addEventListener("click", () => {
+    document.querySelector('.main-tab[data-tab="consumption"]').click();
+    showAppView();
+  });
+  document.getElementById("backToHomeBtn").addEventListener("click", showHome);
+
+  // Sidebar drawer — same fixed-overlay hidden/.open pattern as the History
+  // sheet (openHistory/closeHistory below), just sliding in from the left.
+  const sidebarOverlay = document.getElementById("sidebarOverlay");
+  function openSidebar(){
+    sidebarOverlay.hidden = false;
+    requestAnimationFrame(() => sidebarOverlay.classList.add("open"));
+  }
+  function closeSidebar(){
+    sidebarOverlay.classList.remove("open");
+    setTimeout(() => { sidebarOverlay.hidden = true; }, 220);
+  }
+  document.getElementById("hamburgerBtnHome").addEventListener("click", openSidebar);
+  document.getElementById("hamburgerBtnApp").addEventListener("click", openSidebar);
+  document.getElementById("sidebarCloseBtn").addEventListener("click", closeSidebar);
+  sidebarOverlay.addEventListener("click", (e) => { if(e.target===sidebarOverlay) closeSidebar(); });
+
+  // Sidebar rows open a shared info sheet. About/Send Feedback/Disclaimer/
+  // Privacy Policy/Terms Of Service/FAQ carry the app owner's real copy
+  // (Disclaimer/Privacy/Terms/FAQ transcribed verbatim from the source .txt
+  // files supplied for this app; About is a short summary drawn from the
+  // FAQ's own wording). Settings intentionally doesn't move the existing
+  // theme toggle out of the top bar/home screen.
+  const CONTACT_EMAIL = "conazz07@gmail.com";
+  const SIDEBAR_INFO = {
+    about: {
+      title: "About",
+      body: "<p>ETA and Consumption Calculator is a voyage planning tool for deck officers. "+
+        "It helps estimate Estimated Time of Arrival (ETA), calculate the speed required to hit "+
+        "a target arrival time, and track bunker fuel, fresh water and lube oil remaining on "+
+        "board (ROB) throughout a voyage.</p>"+
+        "<p>It is a planning aid only — it does not replace official charts, tide tables, ECDIS "+
+        "or your vessel's approved passage plan. Always cross-check its output against official "+
+        "sources before making any navigational decision. See Disclaimer for full details.</p>"+
+        "<p>Contact: <a href=\"mailto:"+CONTACT_EMAIL+"\">"+CONTACT_EMAIL+"</a></p>"
+    },
+    feedback: {
+      title: "Send Feedback",
+      body: "<p>Have feedback, a feature request, or found a bug? Feedback and feature "+
+        "requests are always welcome.</p>"+
+        "<p><a href=\"mailto:"+CONTACT_EMAIL+"\">"+CONTACT_EMAIL+"</a></p>"
+    },
+    disclaimer: {
+      title: "Disclaimer",
+      body: '<span class="info-meta">Last updated: [DATE]</span>'+
+        "<h4>1. Planning aid only — not for navigation</h4>"+
+        "<p>ETA and Consumption Calculator (\"the App\") is provided as a general planning "+
+        "and estimation tool for deck officers and other maritime professionals. It is intended "+
+        "to assist with rough voyage planning, arrival estimation, and consumption tracking only.</p>"+
+        "<p>The App is NOT a certified navigational tool, is NOT a substitute for official "+
+        "navigational equipment, and must NOT be used as the sole basis for any navigational, "+
+        "operational, or safety-related decision.</p>"+
+        "<p>All figures produced by the App — including but not limited to Estimated Time of "+
+        "Arrival (ETA), required speed, bunker fuel remaining on board (ROB), fresh water "+
+        "consumption/production, and lube oil ROB — are estimates based solely on the values "+
+        "manually entered by the user. Port positions, time zones, distances, and arrival "+
+        "windows shown or calculated by the App are approximate.</p>"+
+        "<h4>2. Your responsibility to cross-check</h4>"+
+        "<p>Before making any navigational, operational, bunkering, or watchkeeping decision, "+
+        "you must independently cross-check all figures against:</p>"+
+        "<ul>"+
+          "<li>Official charts and Notices to Mariners</li>"+
+          "<li>Tide tables and pilot/port information</li>"+
+          "<li>The vessel's approved passage plan</li>"+
+          "<li>Actual soundings, gauging, and manual verification of tank levels</li>"+
+          "<li>Your company's Safety Management System (SMS) and standing orders</li>"+
+          "<li>Applicable flag state, port state, and classification society requirements</li>"+
+        "</ul>"+
+        "<h4>3. No warranty</h4>"+
+        "<p>The App is provided \"as is\" and \"as available,\" without warranty of any kind, "+
+        "express or implied, including but not limited to warranties of accuracy, reliability, "+
+        "merchantability, fitness for a particular purpose, or non-infringement. Calculations "+
+        "depend entirely on the accuracy of the data you input; the App cannot detect or correct "+
+        "input errors.</p>"+
+        "<h4>4. Limitation of liability</h4>"+
+        "<p>To the maximum extent permitted by applicable law, the developer(s) of ETA and "+
+        "Consumption Calculator shall not be liable for any direct, indirect, incidental, "+
+        "special, consequential, or punitive damages arising from or related to your use of, or "+
+        "inability to use, the App — including but not limited to delays, deviations, "+
+        "groundings, collisions, fuel or fresh water shortages, bunker miscalculations, "+
+        "financial loss, or any injury, loss of life, or property damage.</p>"+
+        "<p>You use the App entirely at your own risk and remain fully responsible for the safe "+
+        "navigation and operation of your vessel at all times.</p>"+
+        "<h4>5. Not affiliated</h4>"+
+        "<p>This App is an independent tool and is not affiliated with, endorsed by, or "+
+        "certified by any flag state, classification society, shipowner, manning agency, or "+
+        "regulatory body.</p>"+
+        "<h4>6. Changes to this disclaimer</h4>"+
+        "<p>This Disclaimer may be updated from time to time. Continued use of the App after "+
+        "changes are posted constitutes acceptance of the revised Disclaimer.</p>"+
+        "<h4>7. Contact</h4>"+
+        "<p>Questions about this Disclaimer can be sent to our email: "+
+        "<a href=\"mailto:"+CONTACT_EMAIL+"\">"+CONTACT_EMAIL+"</a></p>"
+    },
+    privacy: {
+      title: "Privacy Policy",
+      body: '<span class="info-meta">Last updated: 07 September 2027</span>'+
+        "<p>This Privacy Policy explains how ETA and Consumption Calculator (\"the App,\" "+
+        "\"we,\" \"us\") handles information when you use the App.</p>"+
+        "<h4>1. What data the App collects</h4>"+
+        "<p>The App is designed as a voyage planning tool. In its current form:</p>"+
+        "<ul>"+
+          "<li>Voyage data you enter (departure date/time, distance to go, speed, arrival "+
+          "ports, bunker fuel ROB and daily consumption, fresh water ROB/consumption/"+
+          "production, lube oil ROB, and voyage history) is stored locally on your own device, "+
+          "using your browser's local storage. This data is not transmitted to, or stored on, "+
+          "any server operated by us.</li>"+
+          "<li>We do not require you to create an account, and we do not knowingly collect your "+
+          "name, email address, employer, vessel name, or any other personally identifiable "+
+          "information through the App's core features.</li>"+
+          "<li>Standard technical logs may be generated automatically by the hosting provider "+
+          "(e.g., IP address, browser type, access times) purely for security and hosting "+
+          "purposes. We do not use this information to identify individual users.</li>"+
+        "</ul>"+
+        "<p>If future versions of the App add features such as accounts, cloud sync, "+
+        "analytics, or advertising, this Privacy Policy will be updated accordingly before "+
+        "those features are enabled, and this section will be revised to accurately describe "+
+        "what is collected.</p>"+
+        "<h4>2. How your data is used</h4>"+
+        "<p>Any voyage data you enter is used solely to perform the calculations you request "+
+        "(ETA, required speed, fuel/water/lube consumption projections) and to display your "+
+        "voyage history back to you on the same device. We do not sell, rent, or share this "+
+        "data with third parties, because we do not have access to it in the first place — it "+
+        "stays on your device.</p>"+
+        "<h4>3. Clearing your data</h4>"+
+        "<p>You can clear your stored voyage history at any time using the \"Clear history\" "+
+        "option within the App. Clearing your browser's site data, or uninstalling the App, "+
+        "will also remove locally stored data.</p>"+
+        "<h4>4. Data security</h4>"+
+        "<p>Because voyage data is stored locally on your device rather than on a central "+
+        "server, its security depends in part on the security of your own device (e.g., device "+
+        "passcode, browser security settings). We recommend keeping your device and browser up "+
+        "to date.</p>"+
+        "<h4>5. Children's privacy</h4>"+
+        "<p>The App is intended for use by maritime professionals and is not directed at "+
+        "children under 13 (or the relevant minimum age in your jurisdiction). We do not "+
+        "knowingly collect personal information from children.</p>"+
+        "<h4>6. Your rights</h4>"+
+        "<p>Depending on your jurisdiction, you may have rights regarding any personal data "+
+        "processed about you (such as access, correction, or deletion). Since the App does not "+
+        "collect personal data on a central server by default, these rights are primarily "+
+        "exercised by managing or clearing data stored locally on your own device, as described "+
+        "in Section 3.</p>"+
+        "<h4>7. Changes to this policy</h4>"+
+        "<p>We may update this Privacy Policy from time to time, for example if new features "+
+        "change what data is collected. The \"Last updated\" date at the top will reflect the "+
+        "most recent revision. Continued use of the App after changes are posted constitutes "+
+        "acceptance of the revised policy.</p>"+
+        "<h4>8. Contact</h4>"+
+        "<p>Questions about this Privacy Policy can be sent to: "+
+        "<a href=\"mailto:"+CONTACT_EMAIL+"\">"+CONTACT_EMAIL+"</a></p>"
+    },
+    terms: {
+      title: "Terms Of Service",
+      body: '<span class="info-meta">Last updated: 07 September 2026</span>'+
+        "<p>Please read these Terms of Service (\"Terms\") carefully before using ETA and "+
+        "Consumption Calculator (\"the App\"). By accessing or using the App, you agree to be "+
+        "bound by these Terms. If you do not agree, do not use the App.</p>"+
+        "<h4>1. Description of the App</h4>"+
+        "<p>The App is a voyage planning and estimation tool that allows users to calculate "+
+        "Estimated Time of Arrival (ETA), required speed, and track bunker fuel, fresh water, "+
+        "and lube oil consumption based on figures the user manually enters. The App is a "+
+        "planning aid only, as further described in the Disclaimer, which is incorporated into "+
+        "these Terms by reference.</p>"+
+        "<h4>2. Eligibility and acceptable use</h4>"+
+        "<p>You agree to use the App only for its intended purpose of voyage planning "+
+        "assistance and consumption tracking, and not to:</p>"+
+        "<ul>"+
+          "<li>Use the App as the sole basis for navigational or safety-critical decisions;</li>"+
+          "<li>Attempt to reverse-engineer, decompile, or copy the App's underlying code for "+
+          "commercial redistribution without permission;</li>"+
+          "<li>Use the App in any way that violates applicable law or your employer's "+
+          "policies.</li>"+
+        "</ul>"+
+        "<h4>3. No professional or navigational advice</h4>"+
+        "<p>Nothing in the App constitutes professional navigational, engineering, or legal "+
+        "advice. All calculations are estimates based on user-entered data. See the Disclaimer "+
+        "for full details.</p>"+
+        "<h4>4. Intellectual property</h4>"+
+        "<p>The App, including its design, code, logos, and content, is owned by the "+
+        "developer(s) of ETA and Consumption Calculator, except for data you personally enter, "+
+        "which remains yours. You are granted a limited, non-exclusive, non-transferable "+
+        "license to use the App for personal, professional voyage-planning purposes.</p>"+
+        "<h4>5. User data</h4>"+
+        "<p>Voyage data you enter into the App is stored as described in the Privacy Policy. "+
+        "You are responsible for the accuracy of any data you input and for independently "+
+        "verifying all calculated results before relying on them.</p>"+
+        "<h4>6. No warranty</h4>"+
+        "<p>The App is provided \"as is\" and \"as available\" without warranties of any kind, "+
+        "whether express or implied, including warranties of accuracy, availability, or fitness "+
+        "for a particular purpose.</p>"+
+        "<h4>7. Limitation of liability</h4>"+
+        "<p>To the fullest extent permitted by law, the developer(s) shall not be liable for any "+
+        "indirect, incidental, special, consequential, or punitive damages, or any loss of data, "+
+        "revenue, profits, or life, arising out of or related to your use of the App, even if "+
+        "advised of the possibility of such damages. Your sole remedy for dissatisfaction with "+
+        "the App is to stop using it.</p>"+
+        "<h4>8. Availability and changes</h4>"+
+        "<p>We may modify, suspend, or discontinue the App (or any feature of it) at any time, "+
+        "with or without notice. We are not liable for any unavailability of the App or loss of "+
+        "locally stored data resulting from such changes.</p>"+
+        "<h4>9. Termination</h4>"+
+        "<p>You may stop using the App at any time. We reserve the right to restrict or "+
+        "terminate access to the App for users who violate these Terms.</p>"+
+        "<h4>10. Governing law</h4>"+
+        "<p>These Terms shall be governed by the laws of [JURISDICTION, e.g., the Republic of "+
+        "the Philippines], without regard to conflict-of-law principles.</p>"+
+        "<h4>11. Changes to these Terms</h4>"+
+        "<p>We may update these Terms from time to time. The \"Last updated\" date above "+
+        "reflects the most recent revision. Continued use of the App after changes are posted "+
+        "constitutes acceptance of the revised Terms.</p>"+
+        "<h4>12. Contact</h4>"+
+        "<p>Questions about these Terms can be sent to: "+
+        "<a href=\"mailto:"+CONTACT_EMAIL+"\">"+CONTACT_EMAIL+"</a></p>"
+    },
+    faq: {
+      title: "FAQ",
+      body: "<h4>What is ETA and Consumption Calculator?</h4>"+
+        "<p>It's a voyage planning tool for deck officers that helps estimate Estimated Time of "+
+        "Arrival (ETA), calculate the speed required to hit a target arrival time, and track "+
+        "bunker fuel, fresh water, and lube oil remaining on board (ROB) throughout a "+
+        "voyage.</p>"+
+        "<h4>Is this app a substitute for official navigation equipment or the passage plan?</h4>"+
+        "<p>No. This app is a planning aid only. It does not replace official charts, tide "+
+        "tables, ECDIS, or your vessel's approved passage plan. Always cross-check its output "+
+        "against official sources before making any navigational decision. See the Disclaimer "+
+        "for full details.</p>"+
+        "<h4>How does the ETA calculation work?</h4>"+
+        "<p>You enter your departure date/time, distance to go, and speed, and the app "+
+        "calculates your estimated arrival time. You can also add an arrival port and work "+
+        "backward to find the \"Required Speed\" needed to hit a specific target arrival "+
+        "time.</p>"+
+        "<h4>What does \"Required Speed\" mean?</h4>"+
+        "<p>It's a backward calculation: instead of estimating arrival from a fixed speed, you "+
+        "set the ETA you want to achieve, and the app calculates the average speed required to "+
+        "get there in time, based on distance to go.</p>"+
+        "<h4>Can I track more than one type of fuel, water, or lube oil?</h4>"+
+        "<p>Yes. The app lets you add multiple bunker fuel types, track fresh water consumption "+
+        "and production separately, and add multiple lube oil types, each with its own ROB and "+
+        "daily rate.</p>"+
+        "<h4>What is \"ROB Across Speed Range\"?</h4>"+
+        "<p>It's a feature that shows how your remaining fuel/water/lube (ROB) would change "+
+        "across a range of possible speeds, helping you compare trade-offs between arriving "+
+        "faster and conserving consumables.</p>"+
+        "<h4>Does the app work offline?</h4>"+
+        "<p>The app is designed to work as a lightweight tool for onboard use. Voyage data is "+
+        "stored locally on your device, so previously entered data remains accessible even "+
+        "without an internet connection, though initial loading of the app itself may require "+
+        "connectivity depending on your device setup.</p>"+
+        "<h4>Is my data uploaded anywhere, or shared with my company?</h4>"+
+        "<p>No. Voyage data you enter stays stored locally on your own device. It is not "+
+        "automatically sent to any server, shared with your company, manning agency, or any "+
+        "third party. See the Privacy Policy for full details.</p>"+
+        "<h4>How do I save or share a voyage calculation?</h4>"+
+        "<p>Use the \"Save to history\" option to keep a record of a voyage calculation on your "+
+        "device, or \"Copy report\" to copy a summary you can paste into an email, message, or "+
+        "logbook entry.</p>"+
+        "<h4>How do I clear my voyage history?</h4>"+
+        "<p>Use the \"Clear history\" option within the app. Note that this action is usually "+
+        "permanent and cannot be undone.</p>"+
+        "<h4>Is the app free to use?</h4>"+
+        "<p>Yes, the app is free to use.</p>"+
+        "<h4>What devices/platforms does it work on?</h4>"+
+        "<p>Works as a mobile web app on iOS and Android browsers.</p>"+
+        "<h4>How accurate are the calculations?</h4>"+
+        "<p>Calculations are only as accurate as the data you enter. The app performs "+
+        "straightforward arithmetic based on your inputs — it cannot detect input errors, "+
+        "changing weather/current conditions, or other real-world factors that affect actual "+
+        "speed, consumption, or arrival time.</p>"+
+        "<h4>Who do I contact for support or to report a bug?</h4>"+
+        "<p><a href=\"mailto:"+CONTACT_EMAIL+"\">"+CONTACT_EMAIL+"</a></p>"+
+        "<h4>Will new features be added?</h4>"+
+        "<p>Feedback and feature requests are welcome via the contact above.</p>"
+    },
+    settings: {
+      title: "Settings",
+      body: "Theme (Dark / Light / System) is available from the top bar inside ETA Calculator or Consumption Calculator, and from the Home screen."+
+        '<span class="placeholder-note">Placeholder — more settings coming soon.</span>'
+    }
+  };
+  const infoOverlay = document.getElementById("infoOverlay");
+  const infoTitle = document.getElementById("infoTitle");
+  const infoBody = document.getElementById("infoBody");
+  function openInfo(title, bodyHtml){
+    infoTitle.textContent = title;
+    infoBody.innerHTML = bodyHtml;
+    infoOverlay.hidden = false;
+    requestAnimationFrame(() => infoOverlay.classList.add("open"));
+  }
+  function closeInfo(){
+    infoOverlay.classList.remove("open");
+    setTimeout(() => { infoOverlay.hidden = true; }, 220);
+  }
+  document.querySelectorAll(".sidebar-row[data-info]").forEach(row => {
+    row.addEventListener("click", () => {
+      const entry = SIDEBAR_INFO[row.dataset.info];
+      if(!entry) return;
+      closeSidebar();
+      openInfo(entry.title, entry.body);
+    });
+  });
+  document.getElementById("infoCloseBtn").addEventListener("click", closeInfo);
+  infoOverlay.addEventListener("click", (e) => { if(e.target===infoOverlay) closeInfo(); });
+
+  // Share App is a real action (native share sheet, falling back to copying
+  // the link) rather than a placeholder, since it needs no invented copy.
+  document.getElementById("shareAppBtn").addEventListener("click", async () => {
+    const shareData = {
+      title: "ETA and Consumption Calculator",
+      text: "ETA and Consumption Calculator — voyage arrival planner for deck officers.",
+      url: location.href
+    };
+    closeSidebar();
+    if(navigator.share){
+      try{ await navigator.share(shareData); return; }catch(e){ /* cancelled/unsupported — fall through */ }
+    }
+    try{
+      await navigator.clipboard.writeText(shareData.url);
+      toast("Link copied");
+    }catch(e){
+      openInfo("Share App", "Copy this link to share:<br>"+escHtml(shareData.url)+
+        '<span class="placeholder-note">Automatic sharing isn&rsquo;t supported in this browser.</span>');
+    }
+  });
 
   const fuelListEl = document.getElementById("fuelList");
   const lubeListEl = document.getElementById("lubeList");
