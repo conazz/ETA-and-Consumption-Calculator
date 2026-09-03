@@ -150,13 +150,6 @@
     margin:0;
     line-height:1;
   }
-  .brand-text p{
-    margin:2px 0 0;
-    font-size:11px;
-    color:var(--text-dim);
-    letter-spacing:0.06em;
-    text-transform:uppercase;
-  }
   .theme-toggle{
     display:flex; align-items:center; gap:6px;
     background:var(--surface);
@@ -802,6 +795,7 @@
     padding:11px 6px; border-radius:8px;
     color:var(--text); font-size:13.5px; font-weight:500; text-align:left;
     font-family:var(--font-body); background:none; border:none; cursor:pointer;
+    text-decoration:none;
   }
   .sidebar-row:hover{ background:var(--surface2); }
   .sidebar-row svg{ width:18px; height:18px; color:var(--text-dim); flex:none; }
@@ -916,7 +910,6 @@
       </svg>
       <div class="brand-text">
         <h1 id="appTitle">ETA Calculator</h1>
-        <p>Voyage arrival planner</p>
       </div>
     </div>
     <div class="topbar-actions">
@@ -1261,6 +1254,10 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v13H7l-3 3z"></path></svg>
       Send Feedback
     </button>
+    <a class="sidebar-row" id="moreAppsLink" href="https://conazz.github.io/Marinong-Tamad/" target="_blank" rel="noopener noreferrer">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"></rect><rect x="14" y="3" width="7" height="7" rx="1.5"></rect><rect x="3" y="14" width="7" height="7" rx="1.5"></rect><rect x="14" y="14" width="7" height="7" rx="1.5"></rect></svg>
+      More Apps
+    </a>
     <div class="sidebar-divider"></div>
     <button type="button" class="sidebar-row" data-info="disclaimer">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 4v5c0 5-3.4 7.7-8 9-4.6-1.3-8-4-8-9V7z"></path><path d="M9.5 12l1.8 1.8L15 10"></path></svg>
@@ -4510,6 +4507,10 @@
         '<span class="placeholder-note">Automatic sharing isn&rsquo;t supported in this browser.</span>');
     }
   });
+
+  // More Apps is a plain outbound link (opens in a new tab via target="_blank"
+  // in the markup) — this just closes the drawer behind it for tidiness.
+  document.getElementById("moreAppsLink").addEventListener("click", closeSidebar);
 
   const fuelListEl = document.getElementById("fuelList");
   const lubeListEl = document.getElementById("lubeList");
