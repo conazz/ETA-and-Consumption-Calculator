@@ -979,43 +979,29 @@
     50%{ transform:translateY(3px) scaleX(1.08); opacity:.7; }
   }
   .ls-light-wrap{ position:absolute; transform:translate(-50%,-50%); }
-  .ls-light-mover{
-    position:relative; width:1px; height:1px;
-    opacity:0;
-    animation-name:loadingArrive; animation-timing-function:cubic-bezier(.22,.85,.3,1.15); animation-fill-mode:forwards;
-  }
-  @keyframes loadingArrive{
-    0%{   opacity:0; transform:translate(var(--dx),var(--dy)) scale(.3); }
-    18%{  opacity:1; }
-    72%{  transform:translate(calc(var(--dx) * 0.04), calc(var(--dy) * 0.04)) scale(1.12); }
-    100%{ opacity:1; transform:translate(0,0) scale(1); }
-  }
-  @keyframes loadingGreenHoldArrive{
-    0%{   opacity:0; transform:translate(var(--dx),var(--dy)) scale(.3); }
-    5%{   opacity:1; transform:translate(var(--dx),var(--dy)) scale(.55); }
-    73%{  opacity:1; transform:translate(var(--dx),var(--dy)) scale(.55); }
-    93%{  transform:translate(calc(var(--dx) * 0.04), calc(var(--dy) * 0.04)) scale(1.12); }
-    100%{ opacity:1; transform:translate(0,0) scale(1); }
-  }
-  .ls-green .ls-light-mover{ animation-name:loadingGreenHoldArrive; }
-  @keyframes loadingGreenBlink{
-    0%{ opacity:.35; } 8%{ opacity:1; } 16%{ opacity:.35; } 24%{ opacity:1; }
-    32%{ opacity:.35; } 40%{ opacity:1; } 48%{ opacity:.35; } 56%{ opacity:1; }
-    64%{ opacity:.4; } 73%{ opacity:1; } 100%{ opacity:1; }
-  }
-  .ls-green .ls-glow{
-    animation-name:loadingGreenBlink, loadingPulse;
-    animation-duration:4.1s, 3.2s;
-    animation-timing-function:ease-in-out, ease-in-out;
-    animation-iteration-count:1, infinite;
-    animation-delay:0s, 4.1s;
-    animation-fill-mode:forwards, none;
-  }
+  /* Position/opacity are driven entirely by the controller script's
+     per-frame rAF loop (continuous angle/radius math), not CSS animation
+     — deliberately no animation-* here. All four lights behave
+     identically (spiral in, flash+hold at center, spiral out, settle),
+     so unlike the previous version there's no green-specific override
+     anywhere in this file anymore. */
+  .ls-light-mover{ position:relative; width:1px; height:1px; opacity:0; }
   .ls-glow{
     position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
     border-radius:50%;
-    animation-name:loadingPulse; animation-duration:3.2s; animation-timing-function:ease-in-out; animation-iteration-count:infinite;
+    /* mixFlash: one shared brightness flash during the ~1.8s-2.2s center
+       hold. pulse: the slow breathing loop once settled at ~3.3s. Both
+       plain CSS animations (not part of the rAF-driven position math),
+       so the app's existing global prefers-reduced-motion rule already
+       neutralizes them with no extra code — same as before. Keep these
+       delays in sync with HOLD_START/TOTAL in the controller script. */
+    animation-name:loadingMixFlash, loadingPulse;
+    animation-duration:.4s, 3.2s;
+    animation-timing-function:ease-in-out, ease-in-out;
+    animation-iteration-count:1, infinite;
+    animation-delay:1.8s, 3.3s;
   }
+  @keyframes loadingMixFlash{ 0%,100%{ filter:brightness(1); } 50%{ filter:brightness(1.6); } }
   @keyframes loadingPulse{ 0%,100%{ filter:brightness(1); } 50%{ filter:brightness(1.25); } }
   .ls-core{ position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); border-radius:50%; }
 
@@ -1124,26 +1110,32 @@
     <div class="ls-wave" style="left:46%; width:110px; top:95%; animation-duration:3.6s; animation-delay:.5s;"></div>
     <div class="ls-wave" style="left:38%; width:65px;  top:98%; animation-duration:2.8s; animation-delay:1s;"></div>
 
+    <!-- data-ex/ey = off-screen entry point (fraction of viewport w/h),
+         data-dx/dy = center point relative to this light's final anchor
+         (fraction of viewport w/h), data-dir = spin direction. Position is
+         driven every frame by the controller script below via real angle/
+         radius math (continuous, not keyframe waypoints) — see the
+         easeInOutCubic/lightConfig/frame/runScene functions there. -->
     <div class="ls-light-wrap ls-mh1" style="left:50%; top:58%;">
-      <div class="ls-light-mover" style="--dx:0vw; --dy:-8vh; animation-duration:1.1s; animation-delay:3s;">
-        <div class="ls-glow" style="animation-delay:4.1s;"></div>
+      <div class="ls-light-mover" data-ex=".72" data-ey="-.06" data-dx="0" data-dy="-.08" data-dir="1">
+        <div class="ls-glow"></div>
         <div class="ls-core"></div>
       </div>
     </div>
     <div class="ls-light-wrap ls-mh2" style="left:50%; top:69%;">
-      <div class="ls-light-mover" style="--dx:0vw; --dy:-19vh; animation-duration:1.1s; animation-delay:3s;">
-        <div class="ls-glow" style="animation-delay:4.1s;"></div>
+      <div class="ls-light-mover" data-ex="-.68" data-ey=".02" data-dx="0" data-dy="-.19" data-dir="-1">
+        <div class="ls-glow"></div>
         <div class="ls-core"></div>
       </div>
     </div>
     <div class="ls-light-wrap ls-red" style="left:38%; top:77%;">
-      <div class="ls-light-mover" style="--dx:12vw; --dy:-27vh; animation-duration:1.1s; animation-delay:3s;">
-        <div class="ls-glow" style="animation-delay:4.1s;"></div>
+      <div class="ls-light-mover" data-ex="-.78" data-ey=".16" data-dx=".12" data-dy="-.27" data-dir="1">
+        <div class="ls-glow"></div>
         <div class="ls-core"></div>
       </div>
     </div>
     <div class="ls-light-wrap ls-green" style="left:62%; top:77%;">
-      <div class="ls-light-mover" style="--dx:-12vw; --dy:-27vh; animation-duration:4.1s; animation-delay:0s;">
+      <div class="ls-light-mover" data-ex=".8" data-ey=".16" data-dx="-.12" data-dy="-.27" data-dir="-1">
         <div class="ls-glow"></div>
         <div class="ls-core"></div>
       </div>
@@ -1177,13 +1169,98 @@
     try{ reduced = matchMedia("(prefers-reduced-motion: reduce)").matches; }catch(e){}
 
     var el = document.getElementById("loadingScreen");
-    // Normal: ~4.1s for all four lights to arrive + ~1s settled/breathing
-    // pause before fading, matching the reference file's own timing.
-    // Reduced motion: every keyframe above already collapses to its end
-    // state near-instantly under the app's global
+
+    // ---- Light motion: continuous per-frame angle/radius math, not CSS
+    // keyframe waypoints — ported directly from eta_loading_screen_preview.html
+    // (discrete keyframe stops visibly paused at each waypoint; this doesn't).
+    // Timing constants (ms) — HOLD_START/HOLD_END/TOTAL must stay in sync
+    // with the .ls-glow animation-delay values in the CSS above.
+    var HOLD_START = 1800, HOLD_END = 2200, TOTAL = 3300;
+    var IN_TURNS = 1.5, OUT_TURNS = 0.9;
+
+    function easeInOutCubic(p){ return p < 0.5 ? 4*p*p*p : 1 - Math.pow(-2*p+2, 3)/2; }
+
+    function lightConfig(moverEl){
+      var vw = window.innerWidth, vh = window.innerHeight;
+      return {
+        el: moverEl,
+        ex: parseFloat(moverEl.dataset.ex) * vw, ey: parseFloat(moverEl.dataset.ey) * vh,
+        dx: parseFloat(moverEl.dataset.dx) * vw, dy: parseFloat(moverEl.dataset.dy) * vh,
+        dir: parseFloat(moverEl.dataset.dir)
+      };
+    }
+
+    function frame(cfg, tMs){
+      var x, y, scale, opacity, p, rx, ry, angle0, radius0, angle, radius;
+      if(tMs <= 0){
+        x = cfg.ex; y = cfg.ey; scale = .35; opacity = 0;
+      } else if(tMs < HOLD_START){
+        // Spiral IN: entry point -> center point, shrinking radius, continuous rotation.
+        p = easeInOutCubic(Math.min(tMs / HOLD_START, 1));
+        rx = cfg.ex - cfg.dx; ry = cfg.ey - cfg.dy;
+        angle0 = Math.atan2(ry, rx);
+        radius0 = Math.hypot(rx, ry);
+        angle = angle0 + cfg.dir * p * IN_TURNS * 2 * Math.PI;
+        radius = radius0 * (1 - p);
+        x = cfg.dx + radius * Math.cos(angle);
+        y = cfg.dy + radius * Math.sin(angle);
+        scale = .35 + .55 * p;
+        opacity = Math.min(tMs / 120, 1);
+      } else if(tMs < HOLD_END){
+        // Mixed at center, brief hold (glow's mixFlash CSS animation fires here).
+        x = cfg.dx; y = cfg.dy; scale = .9; opacity = 1;
+      } else if(tMs < TOTAL){
+        // Spiral OUT: center point -> this light's own final position.
+        p = easeInOutCubic(Math.min((tMs - HOLD_END) / (TOTAL - HOLD_END), 1));
+        angle0 = Math.atan2(cfg.dy, cfg.dx);
+        radius0 = Math.hypot(cfg.dx, cfg.dy);
+        angle = angle0 + cfg.dir * p * OUT_TURNS * 2 * Math.PI;
+        radius = radius0 * (1 - p);
+        x = radius * Math.cos(angle);
+        y = radius * Math.sin(angle);
+        // Small settle overshoot near the end — still a continuous function of p.
+        scale = p < .85 ? .9 + .35 * (p/.85) : 1.25 - .25 * ((p-.85)/.15);
+        opacity = 1;
+      } else {
+        x = 0; y = 0; scale = 1; opacity = 1;
+      }
+      cfg.el.style.opacity = opacity;
+      cfg.el.style.transform = "translate(" + x + "px, " + y + "px) scale(" + scale + ")";
+    }
+
+    function runScene(){
+      if(!el) return;
+      var configs = Array.prototype.map.call(el.querySelectorAll(".ls-light-mover"), lightConfig);
+      if(reduced){
+        // No power over a raw rAF loop's inline styles (unlike CSS keyframes,
+        // which the app's global reduced-motion rule already neutralizes) —
+        // so the skip has to be explicit here: land directly on final state,
+        // never schedule a frame.
+        configs.forEach(function(c){
+          c.el.style.opacity = 1;
+          c.el.style.transform = "translate(0,0) scale(1)";
+        });
+        return;
+      }
+      var start = performance.now();
+      function tick(now){
+        var t = now - start;
+        configs.forEach(function(c){ frame(c, t); });
+        if(t < TOTAL + 50) requestAnimationFrame(tick);
+      }
+      requestAnimationFrame(tick);
+    }
+    runScene();
+
+    // ---- Dismissal timing ----
+    // Normal: ~3.3s for all four lights to spiral in/mix/spiral out, plus
+    // ~1s settled/breathing pause before fading. Reduced motion: the lights
+    // above already landed on final position with no spiral (their own
+    // explicit branch, not the CSS rule); the glow's flash/pulse *are* plain
+    // CSS animations, so those ARE already collapsed by the app's global
     // `prefers-reduced-motion{ *{animation-duration:0.001ms!important} }`
-    // rule, so this is just a short fixed pause before fading to Home.
-    var minDisplayMs = reduced ? 700 : 5100;
+    // rule. Either way this is just a short fixed pause before fading home.
+    var minDisplayMs = reduced ? 700 : (TOTAL + 1000);
 
     var timerDone = new Promise(function(resolve){ setTimeout(resolve, minDisplayMs); });
     Promise.all([timerDone, window.__appReady]).then(function(){
