@@ -1027,6 +1027,56 @@
   .ls-red .ls-core{ width:11px; height:11px; background:var(--ls-red); box-shadow:0 0 9px 3px rgba(230,65,58,.85); }
   .ls-green .ls-glow{ width:52px; height:52px; background:radial-gradient(circle, rgba(51,209,122,.85) 0%, rgba(51,209,122,.22) 45%, rgba(51,209,122,0) 75%); }
   .ls-green .ls-core{ width:11px; height:11px; background:var(--ls-green); box-shadow:0 0 9px 3px rgba(51,209,122,.85); }
+
+  /* Wordmark and loading indicator — always-on, independent of the light
+     choreography above; these are what make the screen unambiguously read
+     as "the app is loading" rather than just a decorative animation. Both
+     are one-shot fade-ins (wordmark) or simple infinite loops (caption
+     pulse, bar sweep) with no interaction with the light timeline or the
+     dismissal timer — they just keep running until #loadingScreen itself
+     fades out and is removed. */
+  .ls-wordmark{
+    position:absolute; left:0; right:0; top:31%;
+    text-align:center; color:#dfe8f5;
+    opacity:0;
+    animation:loadingFadeIn .6s ease-out .2s forwards;
+  }
+  .ls-wordmark svg{ width:34px; height:34px; margin-bottom:8px; }
+  .ls-wordmark h1{
+    margin:0; font-family:var(--font-display); font-size:17px; font-weight:700;
+    letter-spacing:.08em; text-transform:uppercase; line-height:1.3;
+    text-shadow:0 0 14px rgba(150,200,255,.35);
+  }
+  .ls-wordmark p{ margin:4px 0 0; font-size:10px; letter-spacing:.18em; text-transform:uppercase; color:#8fa3bd; }
+  @keyframes loadingFadeIn{ to{ opacity:1; } }
+
+  .ls-loading-indicator{
+    position:absolute; left:0; right:0; top:85%;
+    text-align:center;
+    opacity:0;
+    animation:loadingFadeIn .6s ease-out .3s forwards;
+  }
+  .ls-loading-indicator .ls-caption{
+    font-size:11px; letter-spacing:.06em; color:#8fa3bd;
+    margin-bottom:10px;
+    animation:loadingCaptionPulse 1.8s ease-in-out infinite;
+  }
+  @keyframes loadingCaptionPulse{ 0%,100%{ opacity:.55; } 50%{ opacity:1; } }
+  .ls-loading-bar{
+    width:56%; max-width:220px; height:3px;
+    margin:0 auto;
+    border-radius:2px;
+    background:rgba(143,163,189,.18);
+    overflow:hidden;
+    position:relative;
+  }
+  .ls-loading-bar::after{
+    content:""; position:absolute; top:0; bottom:0; width:40%; left:-40%;
+    border-radius:2px;
+    background:linear-gradient(to right, transparent, #35c9e6, #7dd9ec, transparent);
+    animation:loadingSweep 1.4s ease-in-out infinite;
+  }
+  @keyframes loadingSweep{ 0%{ left:-40%; } 100%{ left:100%; } }
 </style>
 
 <div id="loadingScreen" aria-hidden="true">
@@ -1041,6 +1091,33 @@
     <div class="ls-star" style="left:36%; top:24%; animation-duration:2.5s; animation-delay:.7s;"></div>
     <div class="ls-star" style="left:9%;  top:27%; animation-duration:3.0s; animation-delay:1.6s;"></div>
     <div class="ls-star" style="left:70%; top:28%; animation-duration:3.5s; animation-delay:.3s;"></div>
+
+    <!-- Wordmark: the app's actual logo (same mark as Home/topbar/sidebar),
+         not the reference file's generic ring+bar placeholder — matches
+         current branding, not the reference's now-stale "ETA Calculator" /
+         "Voyage Arrival Planner" text. -->
+    <div class="ls-wordmark">
+      <svg viewBox="0 0 100 100" aria-hidden="true">
+        <defs>
+          <filter id="logoGlowLoading" x="-60%" y="-60%" width="220%" height="220%">
+            <feGaussianBlur stdDeviation="3.2" result="blur"></feGaussianBlur>
+            <feMerge><feMergeNode in="blur"></feMergeNode><feMergeNode in="SourceGraphic"></feMergeNode></feMerge>
+          </filter>
+        </defs>
+        <circle cx="50" cy="50" r="38" fill="none" stroke="#3fd8ff" stroke-width="4" filter="url(#logoGlowLoading)"></circle>
+        <g stroke="#3fd8ff" stroke-width="3" stroke-linecap="round" filter="url(#logoGlowLoading)">
+          <line x1="50" y1="16" x2="50" y2="24"></line>
+          <line x1="50" y1="76" x2="50" y2="84"></line>
+          <line x1="16" y1="50" x2="24" y2="50"></line>
+          <line x1="76" y1="50" x2="84" y2="50"></line>
+        </g>
+        <line x1="50" y1="50" x2="34" y2="70" stroke="#ff2fb0" stroke-width="5" stroke-linecap="round" filter="url(#logoGlowLoading)"></line>
+        <line x1="50" y1="50" x2="68" y2="26" stroke="#3fd8ff" stroke-width="3.5" stroke-linecap="round" filter="url(#logoGlowLoading)"></line>
+        <circle cx="50" cy="50" r="4.5" fill="#ff2fb0" filter="url(#logoGlowLoading)"></circle>
+      </svg>
+      <h1>ETA and Consumption Calculator</h1>
+      <p>For Deck Officers</p>
+    </div>
 
     <div class="ls-horizon"></div>
     <div class="ls-wave" style="left:26%; width:80px;  top:92%; animation-duration:3.2s; animation-delay:0s;"></div>
@@ -1070,6 +1147,11 @@
         <div class="ls-glow"></div>
         <div class="ls-core"></div>
       </div>
+    </div>
+
+    <div class="ls-loading-indicator">
+      <div class="ls-caption">Loading voyage data&hellip;</div>
+      <div class="ls-loading-bar"></div>
     </div>
   </div>
 </div>
