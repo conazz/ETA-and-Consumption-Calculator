@@ -133,14 +133,24 @@
     position:sticky; top:0; z-index:20;
     display:flex; align-items:center; justify-content:space-between;
     gap:12px;
+    /* Safety net for narrow Android widths: back+hamburger+logo+title on
+       the left and history+theme on the right don't always fit on one row
+       (see the max-width:420px block further down for the primary fix) —
+       if they still don't fit here, the actions cluster drops to its own
+       row via margin-left:auto below instead of clipping off-screen. This
+       is a no-op whenever the row already fits, which is every width
+       verified before this fix (iOS/desktop-browser, and the ETA tab's
+       shorter title). */
+    flex-wrap:wrap; row-gap:8px;
     /* env(safe-area-inset-top) keeps this clear of the phone's status bar /
        notch when installed full-screen (manifest "display":"standalone") —
        it's 0 on devices without a notch, so this is a no-op there. */
     padding:calc(16px + env(safe-area-inset-top)) 18px 14px;
     background:linear-gradient(180deg, var(--bg) 70%, transparent);
   }
-  .brand{ display:flex; align-items:center; gap:10px; }
+  .brand{ display:flex; align-items:center; gap:10px; min-width:0; }
   .brand-mark{ color:var(--accent); flex:none; }
+  .brand-text{ min-width:0; }
   .brand-text h1{
     font-family:var(--font-display);
     font-weight:600;
@@ -149,6 +159,7 @@
     text-transform:uppercase;
     margin:0;
     line-height:1;
+    white-space:nowrap;
   }
   .theme-toggle{
     display:flex; align-items:center; gap:6px;
@@ -165,7 +176,10 @@
   .theme-toggle:hover{ color:var(--text); border-color:var(--accent); }
   .theme-toggle:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
   .theme-toggle svg{ width:15px; height:15px; }
-  .topbar-actions{ display:flex; align-items:center; gap:8px; }
+  /* margin-left:auto keeps this cluster pinned to the right edge whether it
+     shares the row with .brand or, per .topbar's flex-wrap fallback above,
+     drops to its own row underneath it. */
+  .topbar-actions{ display:flex; align-items:center; gap:8px; margin-left:auto; }
   .icon-btn{
     display:flex; align-items:center; justify-content:center;
     width:34px; height:34px; flex:none;
@@ -175,6 +189,20 @@
   .icon-btn:hover{ color:var(--text); border-color:var(--accent); }
   .icon-btn:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
   .icon-btn svg{ width:16px; height:16px; }
+  /* Primary fix for the Android header-overflow bug: back+hamburger+logo+
+     "CONSUMPTION CALCULATOR"+history+theme-toggle doesn't fit a 360-412dp
+     viewport. Dropping the " Calculator" suffix (kept in its own span both
+     here and in the two spots that set #appTitle's HTML) recovers the most
+     space for the one word that varies in length; the small gap/size trims
+     alongside it buy back a little more before .topbar's flex-wrap fallback
+     above would ever need to kick in. Doesn't touch iOS/wider layouts —
+     this query simply never matches there. */
+  @media (max-width: 420px){
+    .title-suffix{ display:none; }
+    .brand{ gap:6px; }
+    .brand-text h1{ font-size:16px; }
+    .topbar-actions{ gap:6px; }
+  }
 
   /* ---------- Main tabs ---------- */
   .main-tabs{ display:flex; gap:8px; padding:0 16px 12px; }
@@ -759,6 +787,55 @@
   .home-card-consum .home-card-icon{ background:color-mix(in srgb, var(--brass) 18%, var(--surface2)); color:var(--brass); }
   .home-footer{ margin-top:26px; text-align:center; font-size:11px; color:var(--text-dim); }
 
+  /* ---------- Home screen ambient motion ----------
+     All four effects below are transform/opacity/background-position only
+     (cheap to animate, no layout thrash), continuous/looping rather than
+     one-shot, and — like the collapse-btn bounce further down — need no
+     extra reduced-motion handling: the global
+     `@media (prefers-reduced-motion: reduce){ *{animation-duration:0.001ms !important;} }`
+     rule near the top of this stylesheet already freezes every animation
+     on this page, this one included. None of them sit above the two
+     feature cards, so tap targets are unaffected. */
+  #homeView{ position:relative; }
+  /* Faint drifting dot-grid — fixed behind all Home content, z-index:-1 so
+     it never intercepts the feature-card taps above it. */
+  #homeView::before{
+    content:"";
+    position:fixed; inset:0; z-index:-1;
+    background-image:radial-gradient(circle, color-mix(in srgb, var(--accent) 20%, transparent) 1px, transparent 1px);
+    background-size:28px 28px;
+    animation:homeDotDrift 55s linear infinite;
+    pointer-events:none;
+  }
+  @keyframes homeDotDrift{ to{ background-position:280px 280px; } }
+  /* Soft pulsing glow on the icon tile itself. */
+  .home-icon-tile{
+    position:relative;
+    animation:homeTilePulse 4s ease-in-out infinite;
+  }
+  @keyframes homeTilePulse{
+    0%, 100%{ box-shadow:0 6px 18px -10px var(--shadow); }
+    50%{ box-shadow:0 6px 22px -6px color-mix(in srgb, var(--accent) 45%, var(--shadow)); }
+  }
+  /* Radar sweep — a rotating wedge of light peeking out around the tile's
+     edge, sitting behind it (negative z-index) so the tile's own opaque
+     background hides everything but the ring of overhang. */
+  .home-icon-tile::before{
+    content:"";
+    position:absolute; inset:-16px; z-index:-1;
+    border-radius:50%;
+    background:conic-gradient(from 0deg, transparent 0deg, var(--accent) 12deg, transparent 46deg, transparent 360deg);
+    opacity:0.3;
+    animation:homeRadarSweep 7s linear infinite;
+  }
+  @keyframes homeRadarSweep{ to{ transform:rotate(360deg); } }
+  /* Needle rotation — independent of the ring/ticks/minute-hand around it. */
+  .logo-needle{
+    transform-origin:50px 50px;
+    animation:homeNeedleSpin 20s linear infinite;
+  }
+  @keyframes homeNeedleSpin{ to{ transform:rotate(360deg); } }
+
   /* ---------- Sidebar ---------- */
   /* Same fixed-overlay + hidden/.open pattern as .sheet-overlay above (see the
      note near it), just anchored left with translateX instead of a bottom
@@ -790,6 +867,15 @@
   .sidebar-brand-name{ font-family:var(--font-display); font-weight:600; font-size:13.5px; letter-spacing:0.02em; }
   .sidebar-version{ font-size:11px; color:var(--text-dim); font-family:var(--font-mono); }
   .sidebar-divider{ height:1px; background:var(--border); margin:16px 0; }
+  /* Reuses the app's existing uppercase/letter-spaced label convention
+     (see .nameplate / .field label) — the sidebar had no per-group text
+     headers before this, so this is the first use of that treatment here;
+     also reused as-is for the Settings sheet's own section labels. */
+  .sidebar-section-label{
+    font-size:11px; font-weight:600; letter-spacing:0.08em;
+    text-transform:uppercase; color:var(--text-dim);
+    padding:0 6px 8px;
+  }
   .sidebar-row{
     display:flex; align-items:center; gap:12px; width:100%;
     padding:11px 6px; border-radius:8px;
@@ -813,6 +899,44 @@
   .info-body li{ margin-bottom:6px; }
   .info-body .info-meta{ display:block; color:var(--text-dim); font-size:11.5px; margin-bottom:16px; }
   .info-body a{ color:var(--accent); }
+  /* ---------- Settings sheet (grouped cards) ---------- */
+  .settings-section{ margin-bottom:18px; }
+  .settings-section:last-child{ margin-bottom:0; }
+  .settings-label{
+    font-size:11px; font-weight:700; letter-spacing:0.08em;
+    text-transform:uppercase; color:var(--brass); margin:0 0 8px; padding:0 2px;
+  }
+  .settings-card{
+    background:var(--surface2); border:1px solid var(--border); border-radius:12px;
+    padding:2px 14px;
+  }
+  .settings-row{
+    display:flex; align-items:center; justify-content:space-between; gap:12px;
+    width:100%; padding:13px 0; background:none; border:none; text-align:left;
+    color:var(--text); font-family:var(--font-body);
+  }
+  .settings-row-nav{ cursor:pointer; }
+  .settings-row + .settings-row{ border-top:1px solid var(--border); }
+  .settings-row-main{ display:flex; align-items:center; gap:12px; min-width:0; }
+  .settings-row-icon{
+    width:32px; height:32px; border-radius:50%; flex:none;
+    display:flex; align-items:center; justify-content:center;
+    background:color-mix(in srgb, var(--accent) 16%, var(--surface));
+    color:var(--accent);
+  }
+  .settings-row-icon svg{ width:16px; height:16px; }
+  .settings-row-title{ display:block; font-size:13.5px; font-weight:600; }
+  .settings-row-subtitle{ display:block; font-size:11.5px; color:var(--text-dim); margin-top:1px; }
+  .settings-row > svg{ width:18px; height:18px; color:var(--text-dim); flex:none; }
+  .settings-stat{
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    padding:11px 0; font-size:13px;
+  }
+  .settings-stat + .settings-stat{ border-top:1px solid var(--border); }
+  .settings-stat span{ color:var(--text-dim); }
+  .settings-stat b{ font-weight:600; color:var(--text); text-align:right; }
+  .settings-about-note{ font-size:12px; line-height:1.55; color:var(--text-dim); margin:10px 0 0; }
+  .settings-about-note:first-of-type{ padding-top:10px; border-top:1px solid var(--border); }
 
   /* ---------- Toast ---------- */
   .toast{
@@ -851,7 +975,7 @@
           <line x1="16" y1="50" x2="24" y2="50"></line>
           <line x1="76" y1="50" x2="84" y2="50"></line>
         </g>
-        <line x1="50" y1="50" x2="34" y2="70" stroke="#ff2fb0" stroke-width="5" stroke-linecap="round" filter="url(#logoGlowHome)"></line>
+        <line class="logo-needle" x1="50" y1="50" x2="34" y2="70" stroke="#ff2fb0" stroke-width="5" stroke-linecap="round" filter="url(#logoGlowHome)"></line>
         <line x1="50" y1="50" x2="68" y2="26" stroke="#3fd8ff" stroke-width="3.5" stroke-linecap="round" filter="url(#logoGlowHome)"></line>
         <circle cx="50" cy="50" r="4.5" fill="#ff2fb0" filter="url(#logoGlowHome)"></circle>
       </svg>
@@ -909,7 +1033,7 @@
         <circle cx="50" cy="50" r="4.5" fill="#ff2fb0" filter="url(#logoGlowTopbar)"></circle>
       </svg>
       <div class="brand-text">
-        <h1 id="appTitle">ETA Calculator</h1>
+        <h1 id="appTitle">ETA<span class="title-suffix"> Calculator</span></h1>
       </div>
     </div>
     <div class="topbar-actions">
@@ -1258,6 +1382,9 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"></rect><rect x="14" y="3" width="7" height="7" rx="1.5"></rect><rect x="3" y="14" width="7" height="7" rx="1.5"></rect><rect x="14" y="14" width="7" height="7" rx="1.5"></rect></svg>
       More Apps
     </a>
+    <div class="sidebar-divider"></div>
+    <div class="sidebar-section-label">Socials</div>
+    <div id="socialsRows"></div>
     <div class="sidebar-divider"></div>
     <button type="button" class="sidebar-row" data-info="disclaimer">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 4v5c0 5-3.4 7.7-8 9-4.6-1.3-8-4-8-9V7z"></path><path d="M9.5 12l1.8 1.8L15 10"></path></svg>
@@ -2203,6 +2330,9 @@
     const html = themeIcons[state.theme] + "<span>"+themeLabels[state.theme]+"</span>";
     themeBtn.innerHTML = html;
     themeBtnHome.innerHTML = html;
+    // Present only while the Settings sheet happens to be open.
+    const settingsToggle = document.getElementById("settingsThemeToggle");
+    if(settingsToggle) settingsToggle.innerHTML = html;
   }
   // One toggle in the app-view top bar, one on the Home screen — both cycle
   // the same state.theme and stay in sync via applyTheme() updating both.
@@ -4136,13 +4266,16 @@
   const tabPanelEta = document.getElementById("tabPanelEta");
   const tabPanelConsumption = document.getElementById("tabPanelConsumption");
   const appTitle = document.getElementById("appTitle");
-  const APP_TITLE_BY_TAB = {eta:"ETA Calculator", consumption:"Consumption Calculator"};
+  // Short form only — " Calculator" lives in its own <span class="title-
+  // suffix"> (both here and in the initial HTML) so it can be hidden at
+  // narrow widths without a second title-text source to keep in sync.
+  const APP_TITLE_BY_TAB = {eta:"ETA", consumption:"Consumption"};
   mainTabs.forEach(t => t.addEventListener("click", () => {
     mainTabs.forEach(x => x.classList.toggle("active", x===t));
     const tab = t.dataset.tab;
     tabPanelEta.hidden = tab!=="eta";
     tabPanelConsumption.hidden = tab!=="consumption";
-    appTitle.textContent = APP_TITLE_BY_TAB[tab] || APP_TITLE_BY_TAB.eta;
+    appTitle.innerHTML = (APP_TITLE_BY_TAB[tab] || APP_TITLE_BY_TAB.eta) + '<span class="title-suffix"> Calculator</span>';
     if(tab==="consumption") refreshAllConsumption();
     updateBottomBar();
   }));
@@ -4204,9 +4337,55 @@
   // Privacy Policy/Terms Of Service/FAQ carry the app owner's real copy
   // (Disclaimer/Privacy/Terms/FAQ transcribed verbatim from the source .txt
   // files supplied for this app; About is a short summary drawn from the
-  // FAQ's own wording). Settings intentionally doesn't move the existing
-  // theme toggle out of the top bar/home screen.
+  // FAQ's own wording).
   const CONTACT_EMAIL = "conazz07@gmail.com";
+  // Settings is the one entry whose body isn't static copy — it embeds a
+  // live theme toggle (kept in sync by applyTheme(), see the Theme section)
+  // and a nav row into the FAQ content, wired up by wireSettingsInfo() right
+  // after this HTML is inserted (see the sidebar-row click handler below).
+  function settingsInfoHtml(){
+    const chevron = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"></path></svg>';
+    return (
+      '<div class="settings-section">'+
+        '<div class="settings-label">Appearance</div>'+
+        '<div class="settings-card">'+
+          '<div class="settings-row">'+
+            '<div class="settings-row-main">'+
+              '<span class="settings-row-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a6.8 6.8 0 0 0 10.5 10.5Z"></path></svg></span>'+
+              '<span class="settings-row-title">Theme</span>'+
+            '</div>'+
+            '<button type="button" class="theme-toggle" id="settingsThemeToggle" aria-label="Change theme"></button>'+
+          '</div>'+
+        '</div>'+
+      '</div>'+
+      '<div class="settings-section">'+
+        '<div class="settings-label">Help &amp; Guide</div>'+
+        '<div class="settings-card">'+
+          '<button type="button" class="settings-row settings-row-nav" id="settingsHelpRow">'+
+            '<div class="settings-row-main">'+
+              '<span class="settings-row-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M9.1 9a3 3 0 1 1 4.6 2.6c-.9.6-1.7 1.1-1.7 2.4"></path><path d="M12 17h.01"></path></svg></span>'+
+              '<div><span class="settings-row-title">App Help</span><span class="settings-row-subtitle">Frequently asked questions</span></div>'+
+            '</div>'+
+            chevron+
+          '</button>'+
+        '</div>'+
+      '</div>'+
+      '<div class="settings-section">'+
+        '<div class="settings-label">About</div>'+
+        '<div class="settings-card settings-about">'+
+          '<div class="settings-stat"><span>App</span><b>ETA and Consumption Calculator</b></div>'+
+          '<div class="settings-stat"><span>Version</span><b>'+APP_VERSION+'</b></div>'+
+          '<p class="settings-about-note"><b>Engine:</b> Straightforward distance &divide; speed '+
+            'arithmetic for ETA and required-speed calculations, with linear rate-based '+
+            'projections for fuel, fresh water, and lube oil consumption. No weather, current, '+
+            'or squat correction is applied.</p>'+
+          '<p class="settings-about-note">Planning aid only — always independently cross-check '+
+            'against official charts, tide tables and the approved passage plan before making '+
+            'any navigational decision.</p>'+
+        '</div>'+
+      '</div>'
+    );
+  }
   const SIDEBAR_INFO = {
     about: {
       title: "About",
@@ -4459,8 +4638,7 @@
     },
     settings: {
       title: "Settings",
-      body: "Theme (Dark / Light / System) is available from the top bar inside ETA Calculator or Consumption Calculator, and from the Home screen."+
-        '<span class="placeholder-note">Placeholder — more settings coming soon.</span>'
+      body: settingsInfoHtml()
     }
   };
   const infoOverlay = document.getElementById("infoOverlay");
@@ -4476,12 +4654,30 @@
     infoOverlay.classList.remove("open");
     setTimeout(() => { infoOverlay.hidden = true; }, 220);
   }
+  // Settings' body embeds a live theme toggle and a nav row into FAQ, so
+  // opening it needs a bit of wiring beyond the plain title/body swap every
+  // other entry uses — wireSettingsInfo() re-runs each time it's (re)opened,
+  // since infoBody's innerHTML (including #settingsThemeToggle) is rebuilt
+  // fresh from the static SIDEBAR_INFO.settings.body string each time.
+  function wireSettingsInfo(){
+    const toggle = document.getElementById("settingsThemeToggle");
+    if(toggle){
+      toggle.innerHTML = themeIcons[state.theme] + "<span>"+themeLabels[state.theme]+"</span>";
+      toggle.addEventListener("click", cycleTheme);
+    }
+    const helpRow = document.getElementById("settingsHelpRow");
+    if(helpRow) helpRow.addEventListener("click", () => openInfoByKey("faq"));
+  }
+  function openInfoByKey(key){
+    const entry = SIDEBAR_INFO[key];
+    if(!entry) return;
+    openInfo(entry.title, entry.body);
+    if(key === "settings") wireSettingsInfo();
+  }
   document.querySelectorAll(".sidebar-row[data-info]").forEach(row => {
     row.addEventListener("click", () => {
-      const entry = SIDEBAR_INFO[row.dataset.info];
-      if(!entry) return;
       closeSidebar();
-      openInfo(entry.title, entry.body);
+      openInfoByKey(row.dataset.info);
     });
   });
   document.getElementById("infoCloseBtn").addEventListener("click", closeInfo);
@@ -4511,6 +4707,25 @@
   // More Apps is a plain outbound link (opens in a new tab via target="_blank"
   // in the markup) — this just closes the drawer behind it for tidiness.
   document.getElementById("moreAppsLink").addEventListener("click", closeSidebar);
+
+  // Socials — data-driven so adding Instagram etc. later is just another
+  // array entry, no markup restructuring. Rendered as real <a target="_blank">
+  // rows, same pattern as More Apps, so they open in the system browser.
+  const SOCIALS = [
+    {
+      label: "Facebook",
+      url: "https://www.facebook.com/share/1CA7138TC4/?mibextid=wwXIfr",
+      icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"></path></svg>'
+    }
+    // Future entries, e.g.:
+    // { label: "Instagram", url: "https://instagram.com/...", icon: "<svg ...></svg>" }
+  ];
+  document.getElementById("socialsRows").innerHTML = SOCIALS.map(s =>
+    '<a class="sidebar-row" href="'+s.url+'" target="_blank" rel="noopener noreferrer">'+s.icon+s.label+'</a>'
+  ).join("");
+  document.querySelectorAll("#socialsRows .sidebar-row").forEach(row => {
+    row.addEventListener("click", closeSidebar);
+  });
 
   const fuelListEl = document.getElementById("fuelList");
   const lubeListEl = document.getElementById("lubeList");
