@@ -13,6 +13,10 @@
 <meta name="apple-mobile-web-app-title" content="ETA Calculator">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<!-- Premium/billing module — see premium.js for every FIREBASE/PLAY BILLING
+     wiring point. Loaded early so window.Premium is ready before the main
+     script (further down) wires up the paywall/lock UI. -->
+<script src="premium.js"></script>
 </head>
 <body>
 <style>
@@ -923,6 +927,141 @@
   .settings-stat b{ font-weight:600; color:var(--text); text-align:right; }
   .settings-about-note{ font-size:12px; line-height:1.55; color:var(--text-dim); margin:10px 0 0; }
   .settings-about-note:first-of-type{ padding-top:10px; border-top:1px solid var(--border); }
+  /* TESTING ONLY — see settingsInfoHtml()'s "Testing" section comment. */
+  .settings-testing-btns{
+    display:flex; flex-direction:column; gap:8px;
+    margin-top:10px; padding-top:10px; border-top:1px solid var(--border);
+  }
+  .settings-testing-btns .btn{ width:100%; }
+
+  /* ---------- Premium / paywall ----------
+     Locked-state styling applied (via JS, not hardcoded per-element) to any
+     row/tile/card that requires the Pro unlock: greyed out, desaturated
+     accents, a small lock icon, an optional amber "PRO" badge. Tapping a
+     locked item opens the paywall instead of the feature — see
+     applyPremiumUI()/wireLockedTap() in the main script. Unlocking just
+     removes this class and the decor elements; nothing else changes. */
+  .locked-item{ opacity:.5; filter:grayscale(0.6); }
+  .locked-item .home-card-icon,
+  .locked-item .settings-row-icon{ background:var(--surface2); color:var(--text-dim); }
+  .lock-decor{ display:inline-flex; align-items:center; gap:6px; margin-left:auto; }
+  .lock-decor svg{ width:14px; height:14px; color:var(--text-dim); flex:none; }
+  .pro-badge{
+    display:inline-block; font-size:9.5px; font-weight:700; letter-spacing:.04em;
+    color:#2a1c05; background:var(--brass); border-radius:5px; padding:2px 5px;
+    text-transform:uppercase; flex:none;
+  }
+  .main-tab.locked-item{ position:relative; }
+  .main-tab .lock-decor{ position:absolute; top:4px; right:6px; margin-left:0; }
+  .home-card.locked-item{ cursor:pointer; }
+  .home-card .lock-decor{ position:absolute; top:10px; right:10px; }
+
+  /* "Upgrade to Pro" sidebar row — deliberately NOT a locked-item; amber and
+     inviting rather than muted. Swaps to a static "Pro ✓ Active" row (via
+     .upgrade-active) once premium. */
+  .sidebar-row-upgrade{ color:var(--brass); font-weight:700; }
+  .sidebar-row-upgrade svg{ color:var(--brass); }
+  .sidebar-row-upgrade:hover{ background:color-mix(in srgb, var(--brass) 12%, transparent); }
+  .sidebar-row-upgrade.upgrade-active{ cursor:default; color:var(--ok); }
+  .sidebar-row-upgrade.upgrade-active svg{ color:var(--ok); }
+  .sidebar-row-upgrade.upgrade-active:hover{ background:none; }
+
+  /* Global trial banner — a plain-document-flow strip at the very top of
+     <body>, before every view (#homeView/#appView/#paywallView/#redeemView),
+     so it's visible on every page while a trial is active, not just one tab.
+     Deliberately NOT position:fixed/sticky — that would need every view's
+     own top padding compensated to avoid overlapping their own topbars
+     (four different header layouts). Living in normal flow means it just
+     pushes everything below it down by its own height, with zero risk of
+     covering any existing header — the tradeoff is it scrolls away with a
+     tall page rather than staying pinned, which is fine for a status strip
+     that doesn't change moment to moment. */
+  /* display lives on :not([hidden]) — an unconditional display here would
+     defeat the [hidden] attribute this element is toggled with (see the
+     .sheet-overlay note further down for why that matters generally). */
+  .trial-global-banner:not([hidden]){
+    display:flex; align-items:center; justify-content:center; gap:8px;
+    background:color-mix(in srgb, var(--accent) 16%, var(--surface));
+    border-bottom:1px solid color-mix(in srgb, var(--accent) 40%, var(--border));
+    padding:9px 16px;
+    padding-top:calc(9px + env(safe-area-inset-top));
+    font-size:12px; color:var(--text); text-align:center;
+  }
+  .trial-global-banner svg{ width:15px; height:15px; color:var(--accent); flex:none; }
+  .trial-global-banner b{ color:var(--accent); }
+  .trial-global-banner .trial-upgrade-link{
+    color:var(--accent); font-weight:700; text-decoration:underline;
+    cursor:pointer; background:none; border:none; font-size:12px; padding:0;
+  }
+
+  /* Paywall + Redeem Code — full-screen views, same pattern as #homeView/
+     #appView (toggled via hidden, shown/hidden by showPaywall()/showRedeem()
+     in the main script). */
+  .full-view{ max-width:480px; margin:0 auto; padding:16px 20px calc(28px + env(safe-area-inset-bottom)); }
+  .full-view-topbar{
+    display:flex; align-items:center; gap:10px;
+    padding:calc(10px + env(safe-area-inset-top)) 0 20px;
+  }
+  .full-view-topbar h1{
+    margin:0; font-family:var(--font-display); font-weight:600; font-size:17px;
+    letter-spacing:.03em; text-transform:uppercase;
+  }
+  .paywall-hero{ text-align:center; margin-bottom:22px; }
+  .paywall-hero svg{ width:44px; height:44px; color:var(--brass); margin-bottom:10px; }
+  .paywall-hero h2{ margin:0 0 6px; font-family:var(--font-display); font-size:20px; font-weight:700; }
+  .paywall-hero p{ margin:0; color:var(--text-dim); font-size:13px; }
+  .paywall-includes{ list-style:none; margin:0 0 20px; padding:0; display:flex; flex-direction:column; gap:10px; }
+  .paywall-includes li{ display:flex; align-items:center; gap:10px; font-size:13.5px; }
+  .paywall-includes svg{ width:18px; height:18px; color:var(--ok); flex:none; }
+  .price-card{
+    background:var(--surface); border:1px solid color-mix(in srgb, var(--brass) 35%, var(--border));
+    border-radius:16px; padding:22px 18px; text-align:center; margin-bottom:16px;
+  }
+  .price-tag{
+    display:inline-block; background:var(--brass); color:#2a1c05;
+    font-size:10.5px; font-weight:700; letter-spacing:.04em; text-transform:uppercase;
+    border-radius:999px; padding:4px 10px; margin-bottom:12px;
+  }
+  .price-original{ font-size:14px; color:var(--text-dim); text-decoration:line-through; margin-bottom:2px; }
+  .price-current{ font-family:var(--font-display); font-size:34px; font-weight:700; color:var(--text); }
+  .price-current span{ font-size:13px; font-weight:500; color:var(--text-dim); }
+  .price-note{ font-size:11px; color:var(--text-dim); margin-top:6px; }
+  .upgrade-btn{
+    width:100%; padding:14px; border-radius:12px; border:none;
+    background:var(--accent); color:var(--accent-ink);
+    font-family:var(--font-display); font-weight:700; font-size:14px; letter-spacing:.03em;
+    text-transform:uppercase; cursor:pointer; margin-bottom:12px;
+  }
+  .upgrade-btn:disabled{ opacity:.6; cursor:default; }
+  /* mobile-app only — revealed in place of #upgradeNowBtn on click, since
+     this plain web page can't process a real purchase. #paywallContactMailto
+     reuses .upgrade-btn's look but is an <a>, not a <button>, so it needs
+     its own display/text-decoration (buttons don't). */
+  .paywall-contact-msg p{ font-size:12.5px; color:var(--text-dim); margin:0 0 12px; line-height:1.5; text-align:center; }
+  #paywallContactMailto{ display:block; text-align:center; text-decoration:none; box-sizing:border-box; }
+  /* Secondary CTA — outlined rather than solid, so it doesn't compete with
+     the primary "Upgrade Now" button above it. */
+  .trial-btn{
+    width:100%; padding:12px; border-radius:12px;
+    background:none; border:1.5px solid var(--accent); color:var(--accent);
+    font-family:var(--font-display); font-weight:700; font-size:13px; letter-spacing:.03em;
+    text-transform:uppercase; cursor:pointer; margin-bottom:10px;
+  }
+  .trial-btn:disabled{ opacity:.6; cursor:default; }
+  .redeem-link{
+    display:block; width:100%; text-align:center; background:none; border:none;
+    color:var(--text-dim); font-size:12.5px; text-decoration:underline; cursor:pointer; padding:6px;
+  }
+  .redeem-field{ margin-bottom:14px; }
+  .redeem-note{ font-size:12.5px; color:var(--text-dim); margin:0 0 18px; line-height:1.5; }
+  .redeem-error{
+    font-size:12.5px; color:var(--danger); margin-top:8px; display:none;
+  }
+  .redeem-error.show{ display:block; }
+  .redeem-success{
+    font-size:12.5px; color:var(--ok); margin-top:8px; display:none;
+  }
+  .redeem-success.show{ display:block; }
 
   /* ---------- Toast ---------- */
   .toast{
@@ -1065,6 +1204,12 @@
   @keyframes loadingSweep{ 0%{ left:-40%; } 100%{ left:100%; } }
 </style>
 
+<!-- Global trial banner — sits before every view (Home/App/Paywall/Redeem)
+     so "X days left" shows on every page, not just one tab. Populated/
+     shown-or-hidden by renderGlobalTrialBanner() in the main script;
+     empty and hidden whenever there's no active trial. -->
+<div id="trialBanner" class="trial-global-banner" hidden></div>
+
 <div id="loadingScreen" aria-hidden="true">
   <div class="ls-scene">
     <div class="ls-star" style="left:8%;  top:9%;  animation-duration:2.6s; animation-delay:.1s;"></div>
@@ -1128,14 +1273,18 @@
         <div class="ls-core"></div>
       </div>
     </div>
-    <div class="ls-light-wrap ls-red" style="left:38%; top:77%;">
-      <div class="ls-light-mover" data-ex="-.78" data-ey=".16" data-dx=".12" data-dy="-.27" data-dir="1">
+    <!-- COLREGs head-on view: port (red) shows on the OBSERVER'S right,
+         starboard (green) on the observer's left — the vessel is facing the
+         viewer, so it's mirrored from the vessel's own left/right. Swapped
+         from the reference file's positions, which had this backwards. -->
+    <div class="ls-light-wrap ls-red" style="left:62%; top:77%;">
+      <div class="ls-light-mover" data-ex=".8" data-ey=".16" data-dx="-.12" data-dy="-.27" data-dir="-1">
         <div class="ls-glow"></div>
         <div class="ls-core"></div>
       </div>
     </div>
-    <div class="ls-light-wrap ls-green" style="left:62%; top:77%;">
-      <div class="ls-light-mover" data-ex=".8" data-ey=".16" data-dx="-.12" data-dy="-.27" data-dir="-1">
+    <div class="ls-light-wrap ls-green" style="left:38%; top:77%;">
+      <div class="ls-light-mover" data-ex="-.78" data-ey=".16" data-dx=".12" data-dy="-.27" data-dir="1">
         <div class="ls-glow"></div>
         <div class="ls-core"></div>
       </div>
@@ -1629,6 +1778,74 @@
 </div>
 <!-- /#appView -->
 
+<div id="paywallView" hidden>
+  <div class="full-view">
+    <div class="full-view-topbar">
+      <button class="icon-btn" id="paywallBackBtn" type="button" aria-label="Back">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"></path></svg>
+      </button>
+      <h1>Upgrade to Pro</h1>
+    </div>
+
+    <div class="paywall-hero">
+      <svg viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true"><path d="M12 2l2.6 6.6L22 10l-5.5 4.6L18 22l-6-3.6L6 22l1.5-7.4L2 10l7.4-1.4z"></path></svg>
+      <h2>Consumption Pro</h2>
+      <p>Unlock the full Consumption Calculator and the desktop app, once.</p>
+    </div>
+
+    <ul class="paywall-includes">
+      <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg> Consumption Calculator (Straight &amp; By Region modes)</li>
+      <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg> Desktop app download</li>
+    </ul>
+
+    <!-- Price text is never hardcoded — populated from Premium.getProductDetails()
+         (PLAY BILLING mock for now) in the main script's renderPaywallPrice(). -->
+    <div class="price-card">
+      <span class="price-tag">Early bird price</span>
+      <div class="price-original" id="paywallOriginalPrice"></div>
+      <div class="price-current" id="paywallCurrentPrice">&hellip;</div>
+      <div class="price-note">One-time purchase &middot; no subscription</div>
+    </div>
+
+    <!-- Hidden once a trial has ever been started/expired, or once premium
+         — see applyPremiumUI() in the main script. -->
+    <button type="button" class="trial-btn" id="startTrialBtn">Start 3-Day Free Trial</button>
+    <!-- mobile-app only (not eta-calculator-premium): this is a plain web
+         page, not a Play-Store TWA, so it can never actually process a Play
+         Billing purchase — clicking "Upgrade Now" here can't "activate"
+         anything real. Instead of faking a purchase, it reveals the contact
+         message below and hides itself. See the click handler further down. -->
+    <button type="button" class="upgrade-btn" id="upgradeNowBtn">Upgrade Now</button>
+    <div class="paywall-contact-msg" id="paywallContactMsg" hidden>
+      <p>This web version doesn&rsquo;t process payments directly yet. To upgrade, email us and we&rsquo;ll get you set up:</p>
+      <a class="upgrade-btn" id="paywallContactMailto" href="mailto:conazz07@gmail.com?subject=Consumption%20Pro%20upgrade%20request">Email conazz07@gmail.com</a>
+    </div>
+    <button type="button" class="redeem-link" id="paywallRedeemLink">Have a code? Redeem it here</button>
+  </div>
+</div>
+
+<div id="redeemView" hidden>
+  <div class="full-view">
+    <div class="full-view-topbar">
+      <button class="icon-btn" id="redeemBackBtn" type="button" aria-label="Back">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"></path></svg>
+      </button>
+      <h1>Redeem Code</h1>
+    </div>
+
+    <p class="redeem-note">Enter a redeem code to unlock Consumption Pro. Codes are single-use and provided by the app owner (e.g. as part of a promotion).</p>
+
+    <div class="field redeem-field">
+      <label for="redeemInput">Redeem code</label>
+      <input type="text" id="redeemInput" autocomplete="off" autocapitalize="characters" placeholder="Enter your code">
+    </div>
+
+    <button type="button" class="upgrade-btn" id="redeemSubmitBtn">Redeem</button>
+    <p class="redeem-error" id="redeemError">Invalid or already used code</p>
+    <p class="redeem-success" id="redeemSuccess">Success! Consumption Pro is now unlocked.</p>
+  </div>
+</div>
+
 </div>
 <!-- /.app -->
 
@@ -1686,6 +1903,14 @@
       <div class="sidebar-brand-name">ETA and Consumption Calculator</div>
       <div class="sidebar-version" id="sidebarVersion"></div>
     </div>
+    <!-- Deliberately NOT styled as a locked-item — this is the entry point
+         TO unlocking, so it stays inviting (amber) rather than muted/grey.
+         Swaps to a non-clickable "Pro ✓ Active" row once premium (see
+         applyPremiumUI() in the main script). -->
+    <button type="button" class="sidebar-row sidebar-row-upgrade" id="upgradeToProBtn">
+      <svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 2l2.6 6.6L22 10l-5.5 4.6L18 22l-6-3.6L6 22l1.5-7.4L2 10l7.4-1.4z"></path></svg>
+      <span id="upgradeToProLabel">Upgrade to Pro</span>
+    </button>
     <div class="sidebar-divider"></div>
     <button type="button" class="sidebar-row" id="sidebarHomeBtn">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11.5 12 4l8 7.5"></path><path d="M6 10v9a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-9"></path><path d="M10 20v-6h4v6"></path></svg>
@@ -1708,6 +1933,13 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"></rect><rect x="14" y="3" width="7" height="7" rx="1.5"></rect><rect x="3" y="14" width="7" height="7" rx="1.5"></rect><rect x="14" y="14" width="7" height="7" rx="1.5"></rect></svg>
       More Apps
     </a>
+    <!-- Locked-state markup (lock icon + PRO badge) is added/removed by
+         applyPremiumUI() in the main script, not hardcoded here — see the
+         .locked-item styles and renderLockDecor() below. -->
+    <button type="button" class="sidebar-row" id="downloadDesktopBtn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"></path><path d="M7 10l5 5 5-5"></path><path d="M5 21h14"></path></svg>
+      <span id="downloadDesktopLabel">Download Desktop App</span>
+    </button>
     <div class="sidebar-divider"></div>
     <div class="sidebar-section-label">Socials</div>
     <div id="socialsRows"></div>
@@ -4594,8 +4826,12 @@
   const appTitle = document.getElementById("appTitle");
   const APP_TITLE_BY_TAB = {eta:"ETA Calculator", consumption:"Consumption Calculator"};
   mainTabs.forEach(t => t.addEventListener("click", () => {
-    mainTabs.forEach(x => x.classList.toggle("active", x===t));
     const tab = t.dataset.tab;
+    // PREMIUM: Consumption is gated — tapping the pill while locked opens
+    // the paywall instead of switching tabs (the previously-active tab
+    // stays active).
+    if(tab === "consumption" && !isFeatureUnlocked()){ showPaywall(); return; }
+    mainTabs.forEach(x => x.classList.toggle("active", x===t));
     tabPanelEta.hidden = tab!=="eta";
     tabPanelConsumption.hidden = tab!=="consumption";
     appTitle.textContent = APP_TITLE_BY_TAB[tab] || APP_TITLE_BY_TAB.eta;
@@ -4607,6 +4843,8 @@
   const APP_VERSION = "1.0.0";
   const homeView = document.getElementById("homeView");
   const appView = document.getElementById("appView");
+  const paywallView = document.getElementById("paywallView");
+  const redeemView = document.getElementById("redeemView");
   const bottomBarWrap = document.getElementById("bottomBarWrap");
   document.getElementById("homeFooter").textContent =
     "v"+APP_VERSION+" · ETA and Consumption Calculator for deck officers";
@@ -4618,15 +4856,30 @@
   // so it's toggled here via inline style rather than the [hidden] attribute
   // convention used elsewhere, to avoid fighting that existing cascade.
   function showHome(){
-    appView.hidden = true;
+    appView.hidden = true; paywallView.hidden = true; redeemView.hidden = true;
     homeView.hidden = false;
     bottomBarWrap.style.display = "none";
   }
   function showAppView(){
-    homeView.hidden = true;
+    homeView.hidden = true; paywallView.hidden = true; redeemView.hidden = true;
     appView.hidden = false;
     bottomBarWrap.style.display = "";
     updateBottomBar();
+  }
+  // Paywall/Redeem — same full-screen-view pattern as Home/App. "Back" on
+  // both always returns to Home (kept simple rather than tracking exactly
+  // where the user tapped in from).
+  function showPaywall(){
+    homeView.hidden = true; appView.hidden = true; redeemView.hidden = true;
+    paywallView.hidden = false;
+    bottomBarWrap.style.display = "none";
+    renderPaywallPrice();
+  }
+  function showRedeem(){
+    homeView.hidden = true; appView.hidden = true; paywallView.hidden = true;
+    redeemView.hidden = false;
+    bottomBarWrap.style.display = "none";
+    resetRedeemForm();
   }
   showHome();
 
@@ -4635,6 +4888,9 @@
     showAppView();
   });
   document.getElementById("homeCardConsumption").addEventListener("click", () => {
+    // PREMIUM: gate the Home-screen entry point too, not just the in-app
+    // pill tab below — both lead to the same Consumption panel.
+    if(!isFeatureUnlocked()){ showPaywall(); return; }
     document.querySelector('.main-tab[data-tab="consumption"]').click();
     showAppView();
   });
@@ -4701,6 +4957,18 @@
         '</div>'+
       '</div>'+
       '<div class="settings-section">'+
+        '<div class="settings-label">Account</div>'+
+        '<div class="settings-card">'+
+          '<button type="button" class="settings-row settings-row-nav" id="settingsRedeemRow">'+
+            '<div class="settings-row-main">'+
+              '<span class="settings-row-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12v7a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-7"></path><rect x="2" y="7" width="20" height="5" rx="1"></rect><path d="M12 7v13"></path><path d="M12 7c-1.5-3.5-6-4-6-1.2C6 7.5 8.5 7 12 7z"></path><path d="M12 7c1.5-3.5 6-4 6-1.2C18 7.5 15.5 7 12 7z"></path></svg></span>'+
+              '<div><span class="settings-row-title">Redeem Code</span><span class="settings-row-subtitle">Have a voucher for Pro?</span></div>'+
+            '</div>'+
+            chevron+
+          '</button>'+
+        '</div>'+
+      '</div>'+
+      '<div class="settings-section">'+
         '<div class="settings-label">About</div>'+
         '<div class="settings-card settings-about">'+
           '<div class="settings-stat"><span>App</span><b>ETA and Consumption Calculator</b></div>'+
@@ -4712,6 +4980,23 @@
           '<p class="settings-about-note">Planning aid only — always independently cross-check '+
             'against official charts, tide tables and the approved passage plan before making '+
             'any navigational decision.</p>'+
+        '</div>'+
+      '</div>'+
+      // TESTING ONLY — lets you flip premium/trial state from inside the app
+      // for QA, since everything in premium.js is local mock state with no
+      // real purchase to "refund" for testing. Delete this whole section
+      // (and its wiring in wireSettingsInfo() below) before a real release.
+      '<div class="settings-section">'+
+        '<div class="settings-label">Testing — Premium (remove before release)</div>'+
+        '<div class="settings-card settings-testing">'+
+          '<div class="settings-stat"><span>Premium</span><b id="testingPremiumStat">—</b></div>'+
+          '<div class="settings-stat"><span>Trial</span><b id="testingTrialStat">—</b></div>'+
+          '<div class="settings-testing-btns">'+
+            '<button type="button" class="btn" id="testingResetBtn">Reset to Free (locked)</button>'+
+            '<button type="button" class="btn" id="testingTrialActiveBtn">Simulate: Trial Active</button>'+
+            '<button type="button" class="btn" id="testingTrialExpiredBtn">Simulate: Trial Expired</button>'+
+            '<button type="button" class="btn" id="testingTrialNoneBtn">Simulate: No Trial</button>'+
+          '</div>'+
         '</div>'+
       '</div>'
     );
@@ -4736,7 +5021,7 @@
     },
     disclaimer: {
       title: "Disclaimer",
-      body: '<span class="info-meta">Last updated: [DATE]</span>'+
+      body: '<span class="info-meta">Last updated: September 7, 2026</span>'+
         "<h4>1. Planning aid only — not for navigation</h4>"+
         "<p>ETA and Consumption Calculator (\"the App\") is provided as a general planning "+
         "and estimation tool for deck officers and other maritime professionals. It is intended "+
@@ -4897,8 +5182,8 @@
         "<p>You may stop using the App at any time. We reserve the right to restrict or "+
         "terminate access to the App for users who violate these Terms.</p>"+
         "<h4>10. Governing law</h4>"+
-        "<p>These Terms shall be governed by the laws of [JURISDICTION, e.g., the Republic of "+
-        "the Philippines], without regard to conflict-of-law principles.</p>"+
+        "<p>These Terms shall be governed by the laws of the Republic of the Philippines, "+
+        "without regard to conflict-of-law principles.</p>"+
         "<h4>11. Changes to these Terms</h4>"+
         "<p>We may update these Terms from time to time. The \"Last updated\" date above "+
         "reflects the most recent revision. Continued use of the App after changes are posted "+
@@ -4997,6 +5282,38 @@
     }
     const helpRow = document.getElementById("settingsHelpRow");
     if(helpRow) helpRow.addEventListener("click", () => openInfoByKey("faq"));
+    const redeemRow = document.getElementById("settingsRedeemRow");
+    if(redeemRow) redeemRow.addEventListener("click", () => { closeInfo(); showRedeem(); });
+
+    // TESTING ONLY — see the "Testing" section's own comment in
+    // settingsInfoHtml(). Lets you flip premium/trial state from inside the
+    // app since there's no real purchase to "refund" while everything is
+    // mocked. Delete this block along with that section before release.
+    const premStat = document.getElementById("testingPremiumStat");
+    const trialStat = document.getElementById("testingTrialStat");
+    function refreshTestingStats(){
+      if(premStat) premStat.textContent = Premium.checkPremiumStatus() ? "Yes" : "No";
+      if(trialStat) trialStat.textContent = currentTrialStatus.status;
+    }
+    refreshTestingStats();
+    const resetBtn = document.getElementById("testingResetBtn");
+    if(resetBtn) resetBtn.addEventListener("click", () => {
+      Premium.resetToFree();
+      currentTrialStatus = { status: "none", daysRemaining: 0 };
+      applyPremiumUI();
+      refreshTestingStats();
+      toast("Reset — back to locked/free state");
+    });
+    [["testingTrialActiveBtn","active"],["testingTrialExpiredBtn","expired"],["testingTrialNoneBtn","none"]].forEach(([id, status]) => {
+      const btn = document.getElementById(id);
+      if(!btn) return;
+      btn.addEventListener("click", () => {
+        currentTrialStatus = Premium.simulateTrial(status);
+        applyPremiumUI();
+        refreshTestingStats();
+        toast("Trial set to: " + status);
+      });
+    });
   }
   function openInfoByKey(key){
     const entry = SIDEBAR_INFO[key];
@@ -5055,6 +5372,198 @@
   ).join("");
   document.querySelectorAll("#socialsRows .sidebar-row").forEach(row => {
     row.addEventListener("click", closeSidebar);
+  });
+
+  /* ================================================================
+     PREMIUM / PAYWALL — Consumption Pro unlock
+     All actual billing/trial/redeem logic lives in premium.js
+     (window.Premium) — this section just wires that up to the UI:
+     locked-state styling, the paywall/redeem pages, and the gates on
+     the Consumption tab and the Download Desktop App sidebar row.
+     ================================================================ */
+
+  // Populated once on launch by refreshPremiumStatus()/checkTrialStatus()
+  // below; isFeatureUnlocked() reads this synchronously rather than
+  // re-awaiting a promise on every click.
+  let currentTrialStatus = { status: "none", daysRemaining: 0 };
+
+  function isFeatureUnlocked(){
+    return Premium.isUnlocked(currentTrialStatus);
+  }
+
+  // Builds the lock icon + "PRO" badge markup shared by every locked item —
+  // not hardcoded per-element, so unlocking always looks the same everywhere.
+  function lockDecorHtml(){
+    return '<span class="lock-decor"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="9" rx="2"></rect><path d="M8 11V8a4 4 0 0 1 8 0v3"></path></svg></span>'+
+      '<span class="pro-badge">Pro</span>';
+  }
+
+  // Applies/removes .locked-item + the lock/PRO decor on one element,
+  // without duplicating the decor nodes if called repeatedly.
+  function setLocked(el, locked){
+    if(!el) return;
+    el.classList.toggle("locked-item", locked);
+    let decorHost = el.querySelector(".lock-decor");
+    if(locked && !decorHost){
+      el.insertAdjacentHTML("beforeend", lockDecorHtml());
+    } else if(!locked){
+      el.querySelectorAll(".lock-decor, .pro-badge").forEach(n => n.remove());
+    }
+  }
+
+  const consumptionTabBtn = document.querySelector('.main-tab[data-tab="consumption"]');
+  const homeCardConsumptionEl = document.getElementById("homeCardConsumption");
+  const downloadDesktopBtn = document.getElementById("downloadDesktopBtn");
+  const upgradeToProBtn = document.getElementById("upgradeToProBtn");
+  const upgradeToProLabel = document.getElementById("upgradeToProLabel");
+  const trialBannerEl = document.getElementById("trialBanner");
+  const startTrialBtn = document.getElementById("startTrialBtn");
+
+  // Global banner (see the element's own HTML comment for why this is a
+  // plain-flow strip before every view, not fixed/sticky) — shown on every
+  // page whenever a trial is active, hidden entirely otherwise.
+  function renderGlobalTrialBanner(unlockedByTrial){
+    if(!unlockedByTrial){
+      trialBannerEl.hidden = true;
+      trialBannerEl.innerHTML = "";
+      return;
+    }
+    const days = currentTrialStatus.daysRemaining;
+    trialBannerEl.hidden = false;
+    trialBannerEl.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 3"></path></svg>'+
+      '<span>Free trial — <b>'+days+' day'+(days===1?"":"s")+' left</b></span>'+
+      '<button type="button" class="trial-upgrade-link" id="trialBannerUpgradeLink">Upgrade</button>';
+    document.getElementById("trialBannerUpgradeLink").addEventListener("click", () => { closeSidebar(); showPaywall(); });
+  }
+
+  // Runs on launch and after any purchase/redeem/trial-status change — the
+  // single place that keeps every locked-item's appearance (and the trial
+  // banner/Start Trial button) in sync.
+  function applyPremiumUI(){
+    const premium = Premium.checkPremiumStatus();
+    const unlocked = isFeatureUnlocked();
+    const unlockedByTrialOnly = unlocked && !premium;
+
+    setLocked(consumptionTabBtn, !unlocked);
+    setLocked(homeCardConsumptionEl, !unlocked);
+    setLocked(downloadDesktopBtn, !unlocked);
+    renderGlobalTrialBanner(unlockedByTrialOnly);
+
+    if(premium){
+      upgradeToProBtn.classList.add("upgrade-active");
+      upgradeToProLabel.textContent = "Pro ✓ Active";
+    } else {
+      upgradeToProBtn.classList.remove("upgrade-active");
+      upgradeToProLabel.textContent = "Upgrade to Pro";
+    }
+
+    // "Start Trial" only makes sense before a trial has ever been used —
+    // hidden once it's running (the banner above covers that), once it's
+    // expired (per spec: remove the button, don't let it be restarted
+    // client-side), and once premium (no reason to trial something owned).
+    if(startTrialBtn) startTrialBtn.hidden = premium || currentTrialStatus.status !== "none";
+  }
+
+  upgradeToProBtn.addEventListener("click", () => {
+    if(Premium.checkPremiumStatus()) return; // "Pro ✓ Active" — informational only
+    closeSidebar();
+    showPaywall();
+  });
+  downloadDesktopBtn.addEventListener("click", () => {
+    closeSidebar();
+    if(!isFeatureUnlocked()){ showPaywall(); return; }
+    // FIREBASE: getDesktopDownloadLink() currently returns a static test
+    // URL — see premium.js.
+    Premium.getDesktopDownloadLink().then(url => { window.open(url, "_blank", "noopener"); });
+  });
+
+  /* ---- Paywall page ---- */
+  function renderPaywallPrice(){
+    const originalEl = document.getElementById("paywallOriginalPrice");
+    const currentEl = document.getElementById("paywallCurrentPrice");
+    currentEl.textContent = "…";
+    originalEl.textContent = "";
+    // mobile-app only: reset the Upgrade Now / contact-message toggle each
+    // time the paywall is (re)opened, so a previous visit's "email us"
+    // state doesn't linger.
+    const upgradeBtnEl = document.getElementById("upgradeNowBtn");
+    const contactMsgEl = document.getElementById("paywallContactMsg");
+    if(upgradeBtnEl) upgradeBtnEl.hidden = false;
+    if(contactMsgEl) contactMsgEl.hidden = true;
+    // PLAY BILLING: getProductDetails()/computeOriginalPrice() are mocked in
+    // premium.js — swap in the real Digital Goods API response and this
+    // rendering code needs no changes (it only reads currency-formatted
+    // strings Play/premium.js hands back, never hardcodes an amount).
+    Premium.getProductDetails().then(details => {
+      const original = Premium.computeOriginalPrice(details);
+      currentEl.textContent = details.formatted;
+      originalEl.textContent = original.formatted;
+    });
+  }
+  document.getElementById("paywallBackBtn").addEventListener("click", showHome);
+  document.getElementById("paywallRedeemLink").addEventListener("click", showRedeem);
+  // mobile-app only: a plain web page can't process a real Play Billing
+  // purchase (that only works inside a Play-Store-installed TWA — see
+  // premium.js's own top-of-file note) — so instead of faking an instant
+  // "activate," clicking Upgrade Now hides itself and reveals a real
+  // mailto link to the developer. Nothing here calls
+  // Premium.purchasePremium() in this folder; eta-calculator-premium (the
+  // future Play Store build) keeps the real purchase flow separately.
+  document.getElementById("upgradeNowBtn").addEventListener("click", (e) => {
+    e.currentTarget.hidden = true;
+    document.getElementById("paywallContactMsg").hidden = false;
+  });
+  if(startTrialBtn){
+    startTrialBtn.addEventListener("click", (e) => {
+      const btn = e.currentTarget;
+      btn.disabled = true;
+      btn.textContent = "Starting…";
+      Premium.startTrial().then(trial => {
+        currentTrialStatus = trial;
+        applyPremiumUI();
+        toast("3-day free trial started!");
+        showHome();
+      }).finally(() => {
+        btn.disabled = false;
+        btn.textContent = "Start 3-Day Free Trial";
+      });
+    });
+  }
+
+  /* ---- Redeem Code page ---- */
+  function resetRedeemForm(){
+    document.getElementById("redeemInput").value = "";
+    document.getElementById("redeemError").classList.remove("show");
+    document.getElementById("redeemSuccess").classList.remove("show");
+  }
+  document.getElementById("redeemBackBtn").addEventListener("click", showHome);
+  document.getElementById("redeemSubmitBtn").addEventListener("click", (e) => {
+    const btn = e.currentTarget;
+    const input = document.getElementById("redeemInput");
+    const errorEl = document.getElementById("redeemError");
+    const successEl = document.getElementById("redeemSuccess");
+    errorEl.classList.remove("show");
+    successEl.classList.remove("show");
+    btn.disabled = true;
+    Premium.redeemVoucher(input.value).then(res => {
+      if(res.success){
+        applyPremiumUI();
+        successEl.classList.add("show");
+        setTimeout(() => { toast("Consumption Pro unlocked!"); showHome(); }, 900);
+      } else {
+        errorEl.textContent = res.message || "Invalid or already used code";
+        errorEl.classList.add("show");
+        btn.disabled = false;
+      }
+    });
+  });
+
+  // ---- Launch-time status check (once, cached — see premium.js) ----
+  Premium.refreshPremiumStatus().then(() => {
+    return Premium.checkTrialStatus();
+  }).then(trial => {
+    currentTrialStatus = trial;
+    applyPremiumUI();
   });
 
   const fuelListEl = document.getElementById("fuelList");
