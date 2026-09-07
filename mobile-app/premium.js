@@ -236,26 +236,24 @@
   }
 
   /* --------------------------------------------------------------------
-     FIREBASE: desktop app download link — not yet wired to a real signed
-     URL (separate from the billing work above); still a static test link.
+     Desktop app download link — a real, signed, time-limited Firebase
+     Storage URL (backend/functions/index.js's getDesktopDownloadLink),
+     issued only after that function re-checks Premium status server-side
+     (Premium only, NOT trial — matches the UI's own gating on this
+     button). Expiry is a generous 24 hours rather than the 10-15 minutes
+     you'd default to for a typical web app, specifically because this
+     app's audience is seafarers with slow/intermittent onboard
+     connectivity — the UI calls this fresh every tap (never caches a
+     link), so there's no downside to trying again later on a stronger
+     connection, but a short expiry would actively hurt someone whose
+     download drops mid-transfer and resumes hours later.
      -------------------------------------------------------------------- */
-
-  // FIREBASE: replace with a real call that requests a signed download URL
-  // from Firebase Storage for the desktop build.
-  //
-  // Expiry: use a GENEROUS window — 24 hours, not the 10-15 minutes you'd
-  // default to for a typical web app. This app's audience is seafarers with
-  // slow/intermittent onboard connectivity; the UI already calls this fresh
-  // every time "Download Desktop App" is tapped (never caches/reuses a
-  // link), so there's no downside to someone tapping it, giving up on a weak
-  // signal, and trying again once they've got a strong connection — but a
-  // short expiry WOULD hurt someone whose download drops mid-transfer and
-  // whose browser tries to resume from the same (by-then-expired) URL later.
-  // 24h comfortably covers "started it, connection dropped, resumed a few
-  // hours later" without meaningfully weakening the point of expiry at all
-  // (stopping a link from being shared/reused indefinitely by non-buyers).
   function getDesktopDownloadLink(){
-    return Promise.resolve("https://example.com/downloads/ETACalculator-Portable-test.exe");
+    return callFunction("getDesktopDownloadLink", { deviceId: getDeviceId() })
+      .then(function(result){
+        if(!result.url) throw new Error(result.error || "Could not get a download link.");
+        return result.url;
+      });
   }
 
   /* --------------------------------------------------------------------

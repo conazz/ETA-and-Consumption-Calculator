@@ -5498,9 +5498,9 @@
     // Desktop download requires full Premium — an active trial is NOT
     // enough (unlike the Consumption Calculator, which trial does unlock).
     if(!Premium.checkPremiumStatus()){ showPaywall(); return; }
-    // FIREBASE: getDesktopDownloadLink() currently returns a static test
-    // URL — see premium.js.
-    Premium.getDesktopDownloadLink().then(url => { window.open(url, "_blank", "noopener"); });
+    Premium.getDesktopDownloadLink()
+      .then(url => { window.open(url, "_blank", "noopener"); })
+      .catch(() => { toast("Couldn't get a download link — check your connection and try again."); });
   });
 
   /* ---- Paywall page ---- */
