@@ -616,6 +616,30 @@
   }
   .collapse-btn:hover svg{ filter:drop-shadow(0 0 7px var(--accent)) drop-shadow(0 0 3px var(--accent)); }
   .collapse-btn.collapsed svg{ animation:collapseBtnBounceRight 1.6s ease-in-out infinite; }
+  /* Per-category show/hide toggles inside "ROB Across Speed Range" (Straight
+     mode only) — a second, independent visibility layer nested *inside* the
+     card's own collapse/expand above: these chips live inside .collapse-inner,
+     so hiding, say, just Lube Oil has no effect on whether the whole card is
+     expanded or collapsed, and vice versa. */
+  .rob-vis-toggles{ display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px; }
+  .rob-vis-chip{
+    display:flex; align-items:center; gap:5px;
+    padding:5px 10px; border-radius:999px;
+    border:1px solid var(--border); background:var(--surface2);
+    color:var(--text-dim); font-family:var(--font-body); font-size:11.5px;
+    font-weight:600; letter-spacing:0.02em; cursor:pointer;
+    transition:background .15s, color .15s, border-color .15s;
+  }
+  .rob-vis-chip:hover{ color:var(--text); }
+  .rob-vis-chip:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
+  .rob-vis-chip[aria-pressed="true"]{
+    background:color-mix(in srgb, var(--accent) 18%, transparent);
+    border-color:var(--accent); color:var(--accent);
+  }
+  .rob-vis-chip .rob-vis-dot{
+    width:7px; height:7px; border-radius:50%; background:currentColor; flex:none; opacity:.5;
+  }
+  .rob-vis-chip[aria-pressed="true"] .rob-vis-dot{ opacity:1; }
   table.var-table{ width:100%; border-collapse:collapse; font-family:var(--font-mono); font-size:12.5px; }
   .var-table th{
     text-align:left; font-family:var(--font-body); font-weight:600; font-size:10.5px;
@@ -757,7 +781,16 @@
     text-transform:uppercase; color:var(--brass); margin:0 0 10px;
     text-shadow:0 0 14px color-mix(in srgb, var(--brass) 55%, transparent);
   }
-  .home-byline{ text-align:center; font-style:italic; font-size:12.5px; color:var(--text-dim); margin:0 0 22px; }
+  .home-byline{ text-align:center; font-style:italic; font-size:12.5px; color:var(--text-dim); margin:0 0 10px; }
+  .home-social-links{ display:flex; justify-content:center; gap:14px; margin:0 0 22px; }
+  .home-social-link{
+    display:flex; align-items:center; justify-content:center;
+    width:34px; height:34px; border-radius:50%; flex:none;
+    background:var(--surface2); border:1px solid var(--border);
+    color:var(--text-dim); transition:color .15s, border-color .15s, background .15s;
+  }
+  .home-social-link:hover{ color:var(--accent); border-color:var(--accent); }
+  .home-social-link svg{ width:17px; height:17px; }
   .home-divider{ height:1px; background:var(--border); width:64px; margin:0 auto 24px; }
   .home-grid{ display:grid; grid-template-columns:1fr 1fr; gap:14px; }
   .home-card{
@@ -1455,7 +1488,15 @@
     </div>
     <h1 class="home-title">ETA and Consumption Calculator</h1>
     <p class="home-subtitle">For Deck Officers</p>
-    <p class="home-byline">by: 2/O C.V. Millares</p>
+    <p class="home-byline">by: Marinong Tamad</p>
+    <div class="home-social-links">
+      <a class="home-social-link" href="https://marinongtamad.com" target="_blank" rel="noopener noreferrer" aria-label="Website">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M3 12h18M12 3c2.5 2.7 3.8 6 3.8 9s-1.3 6.3-3.8 9c-2.5-2.7-3.8-6-3.8-9s1.3-6.3 3.8-9Z"></path></svg>
+      </a>
+      <a class="home-social-link" href="https://www.facebook.com/share/1CA7138TC4/?mibextid=wwXIfr" target="_blank" rel="noopener noreferrer" aria-label="Facebook Page">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M22 12a10 10 0 1 0-11.5 9.87v-6.99H7.9V12h2.6V9.8c0-2.57 1.53-3.99 3.87-3.99 1.12 0 2.3.2 2.3.2v2.53h-1.3c-1.28 0-1.68.8-1.68 1.62V12h2.86l-.46 2.88h-2.4v6.99A10 10 0 0 0 22 12Z"></path></svg>
+      </a>
+    </div>
     <div class="home-divider"></div>
 
     <div class="home-grid">
@@ -1731,6 +1772,11 @@
       </p>
       <div id="robSummaryBody" class="collapse-wrap">
         <div class="collapse-inner">
+          <div class="rob-vis-toggles" id="robVisToggles" role="group" aria-label="Show/hide ROB tables">
+            <button type="button" class="rob-vis-chip" data-rob-key="fuels" aria-pressed="true"><span class="rob-vis-dot"></span>Fuel</button>
+            <button type="button" class="rob-vis-chip" data-rob-key="freshWater" aria-pressed="true"><span class="rob-vis-dot"></span>Fresh Water</button>
+            <button type="button" class="rob-vis-chip" data-rob-key="lubeOils" aria-pressed="true"><span class="rob-vis-dot"></span>Lube Oil</button>
+          </div>
           <div id="fuelSpeedSummary"></div>
           <div id="fwSpeedSummary"></div>
           <div id="lubeSpeedSummary"></div>
@@ -1818,7 +1864,7 @@
     <button type="button" class="upgrade-btn" id="upgradeNowBtn">Upgrade Now</button>
     <div class="paywall-contact-msg" id="paywallContactMsg" hidden>
       <p>This web version doesn&rsquo;t process payments directly yet. To upgrade, email us and we&rsquo;ll get you set up:</p>
-      <a class="upgrade-btn" id="paywallContactMailto" href="mailto:conazz07@gmail.com?subject=Consumption%20Pro%20upgrade%20request">Email conazz07@gmail.com</a>
+      <a class="upgrade-btn" id="paywallContactMailto" href="mailto:support@marinongtamad.com?subject=Consumption%20Pro%20upgrade%20request">Email support@marinongtamad.com</a>
     </div>
     <button type="button" class="redeem-link" id="paywallRedeemLink">Have a code? Redeem it here</button>
   </div>
@@ -1929,7 +1975,7 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v13H7l-3 3z"></path></svg>
       Send Feedback
     </button>
-    <a class="sidebar-row" id="moreAppsLink" href="https://conazz.github.io/Marinong-Tamad/" target="_blank" rel="noopener noreferrer">
+    <a class="sidebar-row" id="moreAppsLink" href="https://marinongtamad.com" target="_blank" rel="noopener noreferrer">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"></rect><rect x="14" y="3" width="7" height="7" rx="1.5"></rect><rect x="3" y="14" width="7" height="7" rx="1.5"></rect><rect x="14" y="14" width="7" height="7" rx="1.5"></rect></svg>
       More Apps
     </a>
@@ -2792,6 +2838,9 @@
     etaSpeedRangeCollapsed: false,
     robSpeedRangeCollapsed: false,
     regionRobSummaryCollapsed: false,
+    // Per-category show/hide inside "ROB Across Speed Range" (Straight mode)
+    // — independent of robSpeedRangeCollapsed above, which hides the whole card.
+    robVisible: {fuels:true, freshWater:true, lubeOils:true},
     consumptionMode: "straight",
     routeLegs: []
   };
@@ -2861,6 +2910,7 @@
       state.robReferencePort = parsed.robReferencePort || "primary";
       state.etaSpeedRangePort = parsed.etaSpeedRangePort || "primary";
       state.consumptionMode = parsed.consumptionMode === "region" ? "region" : "straight";
+      state.robVisible = Object.assign({fuels:true, freshWater:true, lubeOils:true}, parsed.robVisible||{});
       const pc = parsed.consumption || {};
       state.consumption = {
         fuels: Array.isArray(pc.fuels) ? pc.fuels : defaultFuels(),
@@ -4114,6 +4164,31 @@
   robRangeToggle.addEventListener("click", toggleRobRangeCollapsed);
   document.getElementById("robSummaryTitle").addEventListener("click", toggleRobRangeCollapsed);
 
+  // Per-category show/hide (Fuel / Fresh Water / Lube Oil) nested inside the
+  // ROB Across Speed Range card — independent of the card's own
+  // collapse/expand above. Hiding a category just toggles [hidden] on its
+  // container; each container's heading lives inside the same div as its
+  // table, so nothing is ever left orphaned.
+  const ROB_VIS_CONTAINER_ID = {fuels:"fuelSpeedSummary", freshWater:"fwSpeedSummary", lubeOils:"lubeSpeedSummary"};
+  const robVisChips = Array.from(document.querySelectorAll(".rob-vis-chip"));
+  function applyRobVisibility(){
+    robVisChips.forEach(chip => {
+      const key = chip.dataset.robKey;
+      const visible = state.robVisible[key] !== false;
+      chip.setAttribute("aria-pressed", String(visible));
+      const container = document.getElementById(ROB_VIS_CONTAINER_ID[key]);
+      if(container) container.hidden = !visible;
+    });
+  }
+  robVisChips.forEach(chip => {
+    chip.addEventListener("click", () => {
+      const key = chip.dataset.robKey;
+      state.robVisible[key] = !(state.robVisible[key] !== false);
+      saveState();
+      applyRobVisibility();
+    });
+  });
+
   // Projected ROB Summary (By Region mode) — same collapsible pattern.
   const regionRobRangeToggle = document.getElementById("regionRobRangeToggle");
   const regionRobSummaryBodyEl = document.getElementById("regionRobSummaryBody");
@@ -4799,6 +4874,7 @@
     reqDateEl.value = state.reqDate; reqTimeEl.value = state.reqTime; reqZoneEl.value = state.reqZone;
     applyRobRangeCollapsedState();
     applyRegionRobRangeCollapsedState();
+    applyRobVisibility();
     renderLocationBlock(depLocEl, state.dep, () => { saveState(); render(); });
     renderLocationBlock(arrLocEl, state.arr, () => { saveState(); populateRobRefOptions(); render(); });
     renderAltArrivals();
@@ -4924,7 +5000,7 @@
   // (Disclaimer/Privacy/Terms/FAQ transcribed verbatim from the source .txt
   // files supplied for this app; About is a short summary drawn from the
   // FAQ's own wording).
-  const CONTACT_EMAIL = "conazz07@gmail.com";
+  const CONTACT_EMAIL = "support@marinongtamad.com";
   // Settings is the one entry whose body isn't static copy — it embeds a
   // live theme toggle (kept in sync by applyTheme(), see the Theme section)
   // and a nav row into the FAQ content, wired up by wireSettingsInfo() right
@@ -5446,7 +5522,9 @@
 
     setLocked(consumptionTabBtn, !unlocked);
     setLocked(homeCardConsumptionEl, !unlocked);
-    setLocked(downloadDesktopBtn, !unlocked);
+    // Desktop download is Premium-only — an active trial unlocks the
+    // Consumption Calculator but deliberately NOT the desktop download.
+    setLocked(downloadDesktopBtn, !premium);
     renderGlobalTrialBanner(unlockedByTrialOnly);
 
     if(premium){
@@ -5471,7 +5549,9 @@
   });
   downloadDesktopBtn.addEventListener("click", () => {
     closeSidebar();
-    if(!isFeatureUnlocked()){ showPaywall(); return; }
+    // Desktop download requires full Premium — an active trial is NOT
+    // enough (unlike the Consumption Calculator, which trial does unlock).
+    if(!Premium.checkPremiumStatus()){ showPaywall(); return; }
     // FIREBASE: getDesktopDownloadLink() currently returns a static test
     // URL — see premium.js.
     Premium.getDesktopDownloadLink().then(url => { window.open(url, "_blank", "noopener"); });
