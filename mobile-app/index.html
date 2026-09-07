@@ -960,13 +960,6 @@
   .settings-stat b{ font-weight:600; color:var(--text); text-align:right; }
   .settings-about-note{ font-size:12px; line-height:1.55; color:var(--text-dim); margin:10px 0 0; }
   .settings-about-note:first-of-type{ padding-top:10px; border-top:1px solid var(--border); }
-  /* TESTING ONLY — see settingsInfoHtml()'s "Testing" section comment. */
-  .settings-testing-btns{
-    display:flex; flex-direction:column; gap:8px;
-    margin-top:10px; padding-top:10px; border-top:1px solid var(--border);
-  }
-  .settings-testing-btns .btn{ width:100%; }
-
   /* ---------- Premium / paywall ----------
      Locked-state styling applied (via JS, not hardcoded per-element) to any
      row/tile/card that requires the Pro unlock: greyed out, desaturated
@@ -5057,23 +5050,6 @@
             'against official charts, tide tables and the approved passage plan before making '+
             'any navigational decision.</p>'+
         '</div>'+
-      '</div>'+
-      // TESTING ONLY — lets you flip premium/trial state from inside the app
-      // for QA, since everything in premium.js is local mock state with no
-      // real purchase to "refund" for testing. Delete this whole section
-      // (and its wiring in wireSettingsInfo() below) before a real release.
-      '<div class="settings-section">'+
-        '<div class="settings-label">Testing — Premium (remove before release)</div>'+
-        '<div class="settings-card settings-testing">'+
-          '<div class="settings-stat"><span>Premium</span><b id="testingPremiumStat">—</b></div>'+
-          '<div class="settings-stat"><span>Trial</span><b id="testingTrialStat">—</b></div>'+
-          '<div class="settings-testing-btns">'+
-            '<button type="button" class="btn" id="testingResetBtn">Reset to Free (locked)</button>'+
-            '<button type="button" class="btn" id="testingTrialActiveBtn">Simulate: Trial Active</button>'+
-            '<button type="button" class="btn" id="testingTrialExpiredBtn">Simulate: Trial Expired</button>'+
-            '<button type="button" class="btn" id="testingTrialNoneBtn">Simulate: No Trial</button>'+
-          '</div>'+
-        '</div>'+
       '</div>'
     );
   }
@@ -5360,36 +5336,6 @@
     if(helpRow) helpRow.addEventListener("click", () => openInfoByKey("faq"));
     const redeemRow = document.getElementById("settingsRedeemRow");
     if(redeemRow) redeemRow.addEventListener("click", () => { closeInfo(); showRedeem(); });
-
-    // TESTING ONLY — see the "Testing" section's own comment in
-    // settingsInfoHtml(). Lets you flip premium/trial state from inside the
-    // app since there's no real purchase to "refund" while everything is
-    // mocked. Delete this block along with that section before release.
-    const premStat = document.getElementById("testingPremiumStat");
-    const trialStat = document.getElementById("testingTrialStat");
-    function refreshTestingStats(){
-      if(premStat) premStat.textContent = Premium.checkPremiumStatus() ? "Yes" : "No";
-      if(trialStat) trialStat.textContent = currentTrialStatus.status;
-    }
-    refreshTestingStats();
-    const resetBtn = document.getElementById("testingResetBtn");
-    if(resetBtn) resetBtn.addEventListener("click", () => {
-      Premium.resetToFree();
-      currentTrialStatus = { status: "none", daysRemaining: 0 };
-      applyPremiumUI();
-      refreshTestingStats();
-      toast("Reset — back to locked/free state");
-    });
-    [["testingTrialActiveBtn","active"],["testingTrialExpiredBtn","expired"],["testingTrialNoneBtn","none"]].forEach(([id, status]) => {
-      const btn = document.getElementById(id);
-      if(!btn) return;
-      btn.addEventListener("click", () => {
-        currentTrialStatus = Premium.simulateTrial(status);
-        applyPremiumUI();
-        refreshTestingStats();
-        toast("Trial set to: " + status);
-      });
-    });
   }
   function openInfoByKey(key){
     const entry = SIDEBAR_INFO[key];

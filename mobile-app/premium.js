@@ -2,31 +2,33 @@
    PREMIUM / BILLING MODULE — eta-calculator-premium
    ============================================================================
    Everything related to the paid "Consumption Pro" unlock lives in this one
-   file, deliberately separate from index.html's own script, so it's easy to
-   find every spot that needs real backend wiring later.
+   file, deliberately separate from index.html's own script.
 
-   CURRENT STATE: pure mock. Per explicit decision, this does NOT call the
-   real Digital Goods API / Play Billing at all right now — every function
-   below is a local stub with realistic shapes, so the UI can be fully built
-   and tested. Search this file for "FIREBASE:" and "PLAY BILLING:" comments
-   for every spot that needs real wiring before this ships.
+   REAL BACKEND — MOCK_MODE is now false. Trial status, premium status, and
+   voucher redemption are all verified against the Cloud Functions in
+   backend/functions/index.js (Firestore-backed, server-authoritative — see
+   that file's own comments for exactly what each endpoint does and why).
 
-   Reality check worth keeping in mind when wiring the real thing later: this
-   app is a plain PWA (no native Android/Gradle project). Google's native Play
-   Billing Library (Java/Kotlin, ProductDetails class) can only be added to an
-   actual Android app project. The real path for a PWA is wrapping it in a
-   Trusted Web Activity (TWA) and using the browser's Digital Goods API
-   (window.getDigitalGoodsService), which only exists inside a Play-Store-
-   installed TWA — not in a browser tab or a plain "Add to Home Screen"
-   install. That TWA wrapper is a separate project this file doesn't attempt
-   to build.
+   Purchases use the real Digital Goods API + Payment Request API, which
+   only exist inside a Play-Store-installed Trusted Web Activity (TWA) — not
+   in a plain browser tab or "Add to Home Screen" install. This file
+   feature-detects that (`window.getDigitalGoodsService`) rather than
+   assuming it's always available, so the exact same file works correctly
+   both inside the real TWA (real purchases) and when this same site is
+   just visited in an ordinary mobile browser, e.g. as mobile-app (where a
+   purchase attempt correctly and gracefully fails, matching mobile-app's
+   own "contact the developer" upgrade flow instead of a fake purchase).
    ========================================================================== */
 (function(window){
   "use strict";
 
+  // ---- Cloud Functions base URL (see backend/ at the repo root) ----
+  var FUNCTIONS_BASE = "https://us-central1-eta-consumption-calculator.cloudfunctions.net";
+
   // ---- Storage keys (localStorage) ----
   var LS_PREMIUM = "eta-premium-status-v1";       // cached {premium:boolean, checkedAt:number}
   var LS_TRIAL = "eta-premium-trial-v1";          // cached {status:"none"|"active"|"expired", startedAt:number, daysRemaining:number}
+  var LS_DEVICE_ID = "eta-device-id-v1";          // random per-install id, sent to the backend instead of any personal identifier
 
   // The one product this app sells.
   var PRODUCT_ID = "consumption_pro_unlock";
@@ -36,9 +38,7 @@
   // price, so the "original" is always derived as currentPrice / (1 - OFF).
   var DISCOUNT_OFF = 0.5; // 50% off
 
-  // Flip to false once real billing is wired up — everything in this file
-  // checks this flag before touching localStorage-only mock state.
-  var MOCK_MODE = true;
+  var MOCK_MODE = false;
 
   function readJSON(key){
     try{ return JSON.parse(localStorage.getItem(key)); }catch(e){ return null; }
@@ -47,28 +47,65 @@
     try{ localStorage.setItem(key, JSON.stringify(val)); }catch(e){}
   }
 
+  // A random id generated once per install/browser-storage and reused for
+  // every backend call — this is what the server tracks trial/premium
+  // status by, deliberately not anything tied to a real identity. Clearing
+  // site data does generate a fresh one (a real, known limitation — see
+  // backend/functions/index.js's header comment), but it at least stops
+  // the far more casual "toggle a setting" reset trick.
+  function getDeviceId(){
+    var id = null;
+    try{ id = localStorage.getItem(LS_DEVICE_ID); }catch(e){}
+    if(id) return id;
+    id = (window.crypto && window.crypto.randomUUID) ? window.crypto.randomUUID() :
+      "id-" + Date.now() + "-" + Math.random().toString(16).slice(2);
+    try{ localStorage.setItem(LS_DEVICE_ID, id); }catch(e){}
+    return id;
+  }
+
+  function callFunction(name, body){
+    return fetch(FUNCTIONS_BASE + "/" + name, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body || {})
+    }).then(function(res){
+      if(!res.ok) throw new Error("Request failed: " + res.status);
+      return res.json();
+    });
+  }
+
   /* --------------------------------------------------------------------
-     PLAY BILLING: product details / pricing
+     Product details / pricing
      -------------------------------------------------------------------- */
 
-  // PLAY BILLING: replace with a real call to the Digital Goods API, e.g.
-  //   const service = await window.getDigitalGoodsService('https://play.google.com/billing');
-  //   const [details] = await service.getDetails([PRODUCT_ID]);
-  //   return { currency: details.price.currency, value: parseFloat(details.price.value), formatted: <format currency+value> };
-  // The mock below returns a plausible localized price so the paywall UI has
-  // something real to render and compute the struck-through price from.
+  // Uses the real Digital Goods API when running inside the installed TWA;
+  // falls back to a plausible static price everywhere else (a plain
+  // browser tab, or mobile-app) so the paywall UI still has something
+  // sensible to render even where a real purchase could never happen.
   function getProductDetails(){
-    return Promise.resolve({
-      productId: PRODUCT_ID,
-      currency: "USD",
-      value: 9.99,
-      formatted: "$9.99"
-    });
+    if(window.getDigitalGoodsService){
+      return window.getDigitalGoodsService("https://play.google.com/billing")
+        .then(function(service){ return service.getDetails([PRODUCT_ID]); })
+        .then(function(detailsList){
+          var d = detailsList[0];
+          return {
+            productId: d.itemId,
+            currency: d.price.currency,
+            value: parseFloat(d.price.value),
+            formatted: new Intl.NumberFormat(undefined, { style: "currency", currency: d.price.currency }).format(d.price.value)
+          };
+        })
+        .catch(function(){ return mockProductDetails(); });
+    }
+    return mockProductDetails();
+  }
+  function mockProductDetails(){
+    return Promise.resolve({ productId: PRODUCT_ID, currency: "USD", value: 9.99, formatted: "$9.99" });
   }
 
   // Pure calculation, not hardcoded — works off whatever getProductDetails()
   // actually returns, so it's correct regardless of the user's local
-  // currency once the real Digital Goods API is wired in.
+  // currency.
   function computeOriginalPrice(details){
     var original = details.value / (1 - DISCOUNT_OFF);
     return {
@@ -90,156 +127,121 @@
   }
 
   /* --------------------------------------------------------------------
-     PLAY BILLING: purchase flow + status
+     Purchase flow + status
      -------------------------------------------------------------------- */
 
-  // PLAY BILLING: replace with the real purchase flow (Digital Goods API +
-  // the standard web Payment Request API using the
-  // "https://play.google.com/billing" payment method), then FIREBASE:
-  // verify the returned purchase token server-side before trusting it —
-  // never trust a client-reported "success" alone for a real release.
+  // Real purchase flow: Digital Goods API for product details + the
+  // standard web Payment Request API to actually collect payment, then the
+  // resulting purchase token is verified server-side (verifyPurchase Cloud
+  // Function) before Pro is ever unlocked — the client's own "it worked"
+  // claim is never trusted alone.
   function purchasePremium(){
-    return new Promise(function(resolve){
-      setTimeout(function(){
-        setPremium(true);
-        resolve({ success: true, productId: PRODUCT_ID });
-      }, 600); // simulated round-trip
+    if(!window.getDigitalGoodsService){
+      return Promise.resolve({
+        success: false,
+        message: "Purchases only work inside the installed Play Store app, not in a browser tab."
+      });
+    }
+    var paymentMethod = { supportedMethods: "https://play.google.com/billing", data: { sku: PRODUCT_ID } };
+    var request = new PaymentRequest([paymentMethod], {
+      total: { label: "Consumption Pro", amount: { currency: "USD", value: "0" } }
     });
+    return request.show()
+      .then(function(response){
+        var purchaseToken = response.details && response.details.purchaseToken;
+        return response.complete("success").then(function(){ return purchaseToken; });
+      })
+      .then(function(purchaseToken){
+        if(!purchaseToken) throw new Error("No purchase token returned");
+        return callFunction("verifyPurchase", { deviceId: getDeviceId(), purchaseToken: purchaseToken, productId: PRODUCT_ID });
+      })
+      .then(function(result){
+        if(result.success) setPremium(true);
+        return result;
+      })
+      .catch(function(e){
+        return { success: false, message: (e && e.message) || "Purchase could not be completed." };
+      });
   }
 
   function setPremium(isPremium){
     writeJSON(LS_PREMIUM, { premium: !!isPremium, checkedAt: Date.now() });
   }
 
-  // Cached locally so the app doesn't need to re-verify every launch — see
-  // refreshPremiumStatus() for the on-launch check that populates this cache.
+  // Cached locally so the app doesn't need to hit the network on every
+  // single check — see refreshPremiumStatus() for the on-launch (and
+  // post-purchase/redeem) call that keeps this cache in sync.
   function checkPremiumStatus(){
     var cached = readJSON(LS_PREMIUM);
     return !!(cached && cached.premium);
   }
 
-  // PLAY BILLING: replace the mock branch with service.listPurchases() (or
-  // equivalent) to verify the purchase is still valid, then FIREBASE:
-  // cross-check the purchase token against your backend before trusting it.
-  // Called once on app launch (see index.html's init) so normal usage reads
-  // the cheap local cache via checkPremiumStatus() instead of re-verifying
-  // every time.
+  // Re-verifies against the real backend. Falls back to whatever was last
+  // cached if the network call fails (seafarers routinely have
+  // slow/absent connectivity underway) — never wrongly downgrades an
+  // already-confirmed Pro user to locked just because they're offline
+  // right now, but also never grants access that was never confirmed at
+  // least once while online.
   function refreshPremiumStatus(){
-    if(MOCK_MODE){
-      // Nothing to "re-verify" in mock mode — whatever's cached locally
-      // (set by purchasePremium()/redeemVoucher()) is authoritative.
-      return Promise.resolve(checkPremiumStatus());
-    }
-    return Promise.resolve(checkPremiumStatus());
+    return callFunction("checkPremiumStatus", { deviceId: getDeviceId() })
+      .then(function(result){
+        setPremium(!!result.premium);
+        return checkPremiumStatus();
+      })
+      .catch(function(){
+        return checkPremiumStatus();
+      });
   }
 
   /* --------------------------------------------------------------------
-     FIREBASE: free trial (server-checked, not the device clock — abuse-
-     resistant against clock changes/reinstalls only once this actually
-     calls a real backend that tracks trial start per account/device id)
+     Free trial — server-checked, not the device clock. Backed by
+     backend/functions/index.js's checkTrialStatus/startTrial, keyed by the
+     per-install device id above rather than the phone's own clock, so it
+     can't be reset by changing the device date or clearing this cache
+     alone (see that file's own comments for the one remaining gap:
+     uninstall + reinstall generates a fresh device id).
      -------------------------------------------------------------------- */
 
-  // Change this to "active" / "expired" / "none" to explore each UI state
-  // while there's no real backend yet.
-  var MOCK_TRIAL_RESPONSE = "none"; // "none" | "active" | "expired"
-  var MOCK_TRIAL_DAYS_TOTAL = 3;
-
-  // FIREBASE: replace this whole function body with a fetch() to a real
-  // Cloud Function endpoint that looks up (or starts) this user/device's
-  // trial server-side and returns its actual status — deliberately not
-  // trusting the phone's local clock, so it can't be reset by changing the
-  // device date or reinstalling the app.
   function checkTrialStatus(){
-    return new Promise(function(resolve){
-      setTimeout(function(){
-        var cached = readJSON(LS_TRIAL);
-        if(cached && cached.status){
-          resolve(cached);
-          return;
-        }
-        // First check ever (no cache): synthesize a result from the mock
-        // response above, exactly as a real endpoint's first response would.
-        var result;
-        if(MOCK_TRIAL_RESPONSE === "active"){
-          result = { status: "active", startedAt: Date.now(), daysRemaining: MOCK_TRIAL_DAYS_TOTAL };
-        } else if(MOCK_TRIAL_RESPONSE === "expired"){
-          result = { status: "expired", startedAt: Date.now() - (MOCK_TRIAL_DAYS_TOTAL+1)*86400000, daysRemaining: 0 };
-        } else {
-          result = { status: "none", startedAt: null, daysRemaining: 0 };
-        }
+    return callFunction("checkTrialStatus", { deviceId: getDeviceId() })
+      .then(function(result){
         writeJSON(LS_TRIAL, result);
-        resolve(result);
-      }, 150); // simulated network round-trip
-    });
+        return result;
+      })
+      .catch(function(){
+        return readJSON(LS_TRIAL) || { status: "none", startedAt: null, daysRemaining: 0 };
+      });
   }
 
-  // FIREBASE: replace with a real call that registers this user/device's
-  // trial start server-side (the same endpoint checkTrialStatus() would then
-  // read back) — the local write below is only a stand-in so the "Start
-  // Trial" button has something to do before that backend exists. Doing
-  // this purely client-side is exactly the kind of thing that makes a trial
-  // trivially resettable (clear storage, start again), which is why the
-  // real version has to be server-checked, not just locally written.
   function startTrial(){
-    var result = { status: "active", startedAt: Date.now(), daysRemaining: MOCK_TRIAL_DAYS_TOTAL };
-    writeJSON(LS_TRIAL, result);
-    return Promise.resolve(result);
+    return callFunction("startTrial", { deviceId: getDeviceId() })
+      .then(function(result){
+        writeJSON(LS_TRIAL, result);
+        return result;
+      });
   }
 
   /* --------------------------------------------------------------------
-     TESTING ONLY — lets you flip between locked/premium/trial states from
-     inside the app (Settings > Testing) instead of clearing browser storage
-     by hand. Remove the "Testing" section in index.html's settingsInfoHtml()
-     (search for "TESTING ONLY") before shipping to Play Store — these
-     functions themselves are harmless to leave (they only ever touch this
-     app's own local mock state), but the button is dev-only chrome.
+     Redeem code — validated server-side (backend/functions/index.js's
+     redeemVoucher): a hardcoded reusable "TESTCODE" for the developer's
+     own testing/comps, plus real one-time codes stored in Firestore for
+     actual giveaways.
      -------------------------------------------------------------------- */
-  function resetToFree(){
-    try{ localStorage.removeItem(LS_PREMIUM); }catch(e){}
-    try{ localStorage.removeItem(LS_TRIAL); }catch(e){}
-  }
-  function simulateTrial(status){
-    var result;
-    if(status === "active"){
-      result = { status: "active", startedAt: Date.now(), daysRemaining: MOCK_TRIAL_DAYS_TOTAL };
-    } else if(status === "expired"){
-      result = { status: "expired", startedAt: Date.now() - (MOCK_TRIAL_DAYS_TOTAL+1)*86400000, daysRemaining: 0 };
-    } else {
-      result = { status: "none", startedAt: null, daysRemaining: 0 };
-    }
-    writeJSON(LS_TRIAL, result);
-    return result;
-  }
-
-  /* --------------------------------------------------------------------
-     FIREBASE: redeem code
-     -------------------------------------------------------------------- */
-
-  // FIREBASE: replace with a real call to a Cloud Function that validates
-  // the code against your voucher database (single-use, expiry, etc.) and
-  // returns whether it was accepted. The mock below only recognizes the
-  // literal string "TESTCODE" (case-insensitive) for local UI testing.
   function redeemVoucher(code){
-    return new Promise(function(resolve){
-      setTimeout(function(){
-        var normalized = (code || "").trim().toUpperCase();
-        if(normalized === "TESTCODE"){
-          setPremium(true);
-          resolve({ success: true });
-        } else {
-          resolve({ success: false, message: "Invalid or already used code" });
-        }
-      }, 400);
-    });
+    return callFunction("redeemVoucher", { deviceId: getDeviceId(), code: code })
+      .then(function(result){
+        if(result.success) setPremium(true);
+        return result;
+      });
   }
 
   /* --------------------------------------------------------------------
-     FIREBASE: desktop app download link
+     FIREBASE: desktop app download link — not yet wired to a real signed
+     URL (separate from the billing work above); still a static test link.
      -------------------------------------------------------------------- */
 
   // FIREBASE: replace with a real call that requests a signed download URL
-  // from Firebase Storage for the desktop build. Static test URL for now so
-  // the UI has something to open.
+  // from Firebase Storage for the desktop build.
   //
   // Expiry: use a GENEROUS window — 24 hours, not the 10-15 minutes you'd
   // default to for a typical web app. This app's audience is seafarers with
@@ -276,9 +278,6 @@
     startTrial: startTrial,
     redeemVoucher: redeemVoucher,
     getDesktopDownloadLink: getDesktopDownloadLink,
-    isUnlocked: isUnlocked,
-    // Testing-only helpers — see the comment above their definitions.
-    resetToFree: resetToFree,
-    simulateTrial: simulateTrial
+    isUnlocked: isUnlocked
   };
 })(window);
