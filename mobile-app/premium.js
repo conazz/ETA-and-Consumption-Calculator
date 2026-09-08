@@ -135,6 +135,21 @@
   // resulting purchase token is verified server-side (verifyPurchase Cloud
   // Function) before Pro is ever unlocked — the client's own "it worked"
   // claim is never trusted alone.
+  //
+  // Before ever calling request.show(), check listPurchases() for an
+  // existing, still-owned purchase of this SKU that was never successfully
+  // verified server-side — this genuinely happens (network drops right
+  // after paying, our backend hiccups, app gets killed mid-flow) and Play
+  // Billing's own response in that state is just "You already own this
+  // item," a dead end with no way to retry the purchase. Re-verifying the
+  // existing purchase token instead is the correct recovery, and doubles
+  // as a natural "restore purchase" path.
+  //
+  // If that existing token turns out to be unusable (e.g. Play silently
+  // canceled it in the background — happens to a stale/abandoned purchase
+  // that was never acknowledged in time), fall through to a genuinely
+  // fresh purchase instead of leaving the user stuck on a dead token with
+  // no way forward.
   function purchasePremium(){
     if(!window.getDigitalGoodsService){
       return Promise.resolve({
@@ -142,18 +157,35 @@
         message: "Purchases only work inside the installed Play Store app, not in a browser tab."
       });
     }
-    var paymentMethod = { supportedMethods: "https://play.google.com/billing", data: { sku: PRODUCT_ID } };
-    var request = new PaymentRequest([paymentMethod], {
-      total: { label: "Consumption Pro", amount: { currency: "USD", value: "0" } }
-    });
-    return request.show()
-      .then(function(response){
+    function freshPurchase(){
+      var paymentMethod = { supportedMethods: "https://play.google.com/billing", data: { sku: PRODUCT_ID } };
+      var request = new PaymentRequest([paymentMethod], {
+        total: { label: "Consumption Pro", amount: { currency: "USD", value: "0" } }
+      });
+      return request.show().then(function(response){
         var purchaseToken = response.details && response.details.purchaseToken;
         return response.complete("success").then(function(){ return purchaseToken; });
+      });
+    }
+    function verifyToken(purchaseToken){
+      if(!purchaseToken) throw new Error("No purchase token returned");
+      return callFunction("verifyPurchase", { deviceId: getDeviceId(), purchaseToken: purchaseToken, productId: PRODUCT_ID });
+    }
+    return window.getDigitalGoodsService("https://play.google.com/billing")
+      .then(function(service){
+        if(!service.listPurchases) return null;
+        return service.listPurchases().then(function(purchases){
+          var existing = purchases.filter(function(p){ return p.itemId === PRODUCT_ID; })[0];
+          return existing ? existing.purchaseToken : null;
+        }).catch(function(){ return null; });
       })
-      .then(function(purchaseToken){
-        if(!purchaseToken) throw new Error("No purchase token returned");
-        return callFunction("verifyPurchase", { deviceId: getDeviceId(), purchaseToken: purchaseToken, productId: PRODUCT_ID });
+      .catch(function(){ return null; })
+      .then(function(existingToken){
+        if(!existingToken) return freshPurchase().then(verifyToken);
+        return verifyToken(existingToken).then(function(result){
+          if(result.success) return result;
+          return freshPurchase().then(verifyToken);
+        });
       })
       .then(function(result){
         if(result.success) setPremium(true);

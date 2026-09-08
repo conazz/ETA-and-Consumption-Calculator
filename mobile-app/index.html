@@ -158,7 +158,7 @@
   .brand-text h1{
     font-family:var(--font-display);
     font-weight:600;
-    font-size:19px;
+    font-size:clamp(14px, 4.5vw, 19px);
     letter-spacing:0.03em;
     text-transform:uppercase;
     margin:0;
@@ -180,6 +180,15 @@
   .theme-toggle:hover{ color:var(--text); border-color:var(--accent); }
   .theme-toggle:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
   .theme-toggle svg{ width:15px; height:15px; }
+  /* Last-resort space-saver once the title's own clamp() bottoms out: drop
+     the "System"/"Light"/"Dark" word and keep just the icon, so the
+     history+theme cluster stays on the topbar's first row instead of
+     wrapping to its own row (the .topbar flex-wrap fallback above still
+     catches anything even this doesn't fully solve). */
+  @media (max-width: 360px){
+    .theme-toggle{ padding:6px 10px; gap:0; }
+    .theme-toggle .tt-label{ display:none; }
+  }
   /* margin-left:auto keeps this cluster pinned to the right edge whether it
      shares the row with .brand or, per .topbar's flex-wrap fallback above,
      drops to its own row underneath it. */
@@ -243,10 +252,25 @@
   }
 
   /* ---------- Results card ---------- */
-  .card--result{
-    border-color:color-mix(in srgb, var(--brass) 35%, var(--border));
-    background:linear-gradient(160deg, var(--surface) 65%, color-mix(in srgb, var(--brass) 7%, var(--surface)));
+  /* Plain by default — the gold treatment below only kicks in once
+     .has-value is toggled on (real calculated numbers to look at), so an
+     empty result card doesn't falsely draw the eye. See renderResult() and
+     renderConsumInfo() for where .has-value gets added/removed. */
+  .card--result.has-value{
+    border-color:var(--brass);
+    background:linear-gradient(160deg, var(--surface) 65%, color-mix(in srgb, var(--brass) 10%, var(--surface)));
   }
+  .eta-hint-line{ margin:10px 0 0; text-align:center; }
+  .eta-hint{
+    display:inline-block;
+    color:var(--brass);
+    font-size:12px;
+    font-weight:600;
+    cursor:pointer;
+    animation:etaHintPulse 2.2s ease-in-out infinite;
+  }
+  @keyframes etaHintPulse{ 0%,100%{ opacity:0.55; } 50%{ opacity:1; } }
+  .lt-suffix{ color:var(--brass); font-size:0.7em; font-weight:700; letter-spacing:0.04em; vertical-align:middle; }
   .result-empty{
     color:var(--text-dim);
     font-size:13.5px;
@@ -336,8 +360,15 @@
   .field{ flex-direction:column; gap:6px; }
   .field:not([hidden]){ display:flex; }
   .field label, .field-label{
-    font-size:11.5px; font-weight:600; letter-spacing:0.03em;
+    /* clamp() shrinks the label before it ever wraps to a second line —
+       a wrapped label in a .field-row (e.g. "Speed variance ± (kn)" next
+       to "Interval (kn)") pushes its sibling field out of alignment with
+       its input, since both fields share one flex row. nowrap+ellipsis is
+       the hard guarantee underneath the shrink, for labels too long to
+       ever fit even at the smallest clamped size. */
+    font-size:clamp(9.5px, 3vw, 11.5px); font-weight:600; letter-spacing:0.03em;
     color:var(--text-dim); text-transform:uppercase;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:block;
   }
   .field-row{ display:flex; gap:10px; }
   .field-row > *{ flex:1; min-width:0; }
@@ -981,6 +1012,13 @@
   .main-tab .lock-decor{ position:absolute; top:4px; right:6px; margin-left:0; }
   .home-card.locked-item{ cursor:pointer; }
   .home-card .lock-decor{ position:absolute; top:10px; right:10px; }
+  /* Required Speed card (.card already has position:relative) and the
+     ETA-across-speed-range section — same top-right badge placement as
+     .home-card above, and clicking anywhere opens the paywall (see
+     renderResult()/applyPremiumUI() for the click wiring). */
+  .var-wrap.locked-item{ position:relative; cursor:pointer; padding:16px; }
+  .card.locked-item .lock-decor,
+  .var-wrap.locked-item .lock-decor{ position:absolute; top:10px; right:10px; }
 
   /* "Upgrade to Pro" sidebar row — deliberately NOT a locked-item; amber and
      inviting rather than muted. Swaps to a static "Pro ✓ Active" row (via
@@ -1039,6 +1077,23 @@
   .paywall-includes{ list-style:none; margin:0 0 20px; padding:0; display:flex; flex-direction:column; gap:10px; }
   .paywall-includes li{ display:flex; align-items:center; gap:10px; font-size:13.5px; }
   .paywall-includes svg{ width:18px; height:18px; color:var(--ok); flex:none; }
+  /* Free vs Pro comparison table — same dark/brass theme as the rest of the
+     app rather than the flat white reference layout it's modeled on. */
+  .paywall-compare{ width:100%; border-collapse:collapse; margin:0 0 20px; font-size:12.5px; }
+  .paywall-compare th{
+    font-family:var(--font-display); font-size:10.5px; letter-spacing:0.08em;
+    text-transform:uppercase; color:var(--text-dim); font-weight:600;
+    padding:6px 4px; text-align:center; border-bottom:1px solid var(--border);
+  }
+  .paywall-compare th:first-child{ text-align:left; }
+  .paywall-compare td{ padding:9px 4px; border-bottom:1px solid var(--border); vertical-align:middle; }
+  .paywall-compare tr:last-child td{ border-bottom:none; }
+  .paywall-compare td:first-child{ color:var(--text); }
+  .paywall-compare td:not(:first-child){ text-align:center; width:64px; }
+  .paywall-compare .cmp-yes{ color:var(--ok); }
+  .paywall-compare .cmp-yes svg{ width:16px; height:16px; }
+  .paywall-compare .cmp-no{ color:var(--text-dim); }
+  .paywall-compare .pro-col{ color:var(--brass); font-weight:700; }
   .price-card{
     background:var(--surface); border:1px solid color-mix(in srgb, var(--brass) 35%, var(--border));
     border-radius:16px; padding:22px 18px; text-align:center; margin-bottom:16px;
@@ -1609,8 +1664,8 @@
     <div id="altArrivalsList"></div>
     <button type="button" class="link-btn" id="addAltArrivalBtn">+ Add alternative arrival port</button>
 
-    <!-- REQUIRED SPEED -->
-    <section class="card">
+    <!-- REQUIRED SPEED — PREMIUM: see setLocked(reqCard, ...) further down. -->
+    <section class="card" id="reqCard">
       <div class="switch-row">
         <div>
           <p class="nameplate" id="reqNameplate" style="margin-bottom:4px;">Required Speed</p>
@@ -1639,7 +1694,7 @@
             <select id="reqZone">
               <option value="arr">Arrival location</option>
               <option value="dep">Departure location</option>
-              <option value="utc">UTC</option>
+              <option value="utc">GMT</option>
             </select>
           </div>
         </div>
@@ -1829,13 +1884,25 @@
     <div class="paywall-hero">
       <svg viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true"><path d="M12 2l2.6 6.6L22 10l-5.5 4.6L18 22l-6-3.6L6 22l1.5-7.4L2 10l7.4-1.4z"></path></svg>
       <h2>Consumption Pro</h2>
-      <p>Unlock the full Consumption Calculator and the desktop app, once.</p>
+      <p>Unlock the full ETA toolset, the Consumption Calculator, and the desktop app, once.</p>
     </div>
 
-    <ul class="paywall-includes">
-      <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg> Consumption Calculator (Straight &amp; By Region modes)</li>
-      <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg> Desktop app download</li>
-    </ul>
+    <!-- Free vs Pro comparison — rows mirror exactly what's gated in the
+         app itself (see setLocked() calls in applyPremiumUI() and
+         renderResult()). Plain single-port ETA isn't listed as a row since
+         it's available in both tiers, not a differentiator. -->
+    <table class="paywall-compare">
+      <thead>
+        <tr><th>Feature</th><th>Free</th><th class="pro-col">Pro</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>ETA across speed range</td><td class="cmp-no">&ndash;</td><td class="cmp-yes">&#10003;</td></tr>
+        <tr><td>Alternative arrival ports</td><td class="cmp-no">&ndash;</td><td class="cmp-yes">&#10003;</td></tr>
+        <tr><td>Required speed</td><td class="cmp-no">&ndash;</td><td class="cmp-yes">&#10003;</td></tr>
+        <tr><td>Consumption Calculator (Straight &amp; By Region)</td><td class="cmp-no">&ndash;</td><td class="cmp-yes">&#10003;</td></tr>
+        <tr><td>Desktop app download</td><td class="cmp-no">&ndash;</td><td class="cmp-yes">&#10003;</td></tr>
+      </tbody>
+    </table>
 
     <!-- Price text is never hardcoded — populated from Premium.getProductDetails()
          (PLAY BILLING mock for now) in the main script's renderPaywallPrice(). -->
@@ -2928,7 +2995,7 @@
   function applyTheme(){
     if(state.theme==="system") document.documentElement.removeAttribute("data-theme");
     else document.documentElement.setAttribute("data-theme", state.theme);
-    const html = themeIcons[state.theme] + "<span>"+themeLabels[state.theme]+"</span>";
+    const html = themeIcons[state.theme] + "<span class=\"tt-label\">"+themeLabels[state.theme]+"</span>";
     themeBtn.innerHTML = html;
     themeBtnHome.innerHTML = html;
     // Present only while the Settings sheet happens to be open.
@@ -3282,11 +3349,11 @@
         }
         const arrZI = getZoneInfo(alt.arr);
         const shown = arrZI ? calc.etaUTC.setZone(arrZI.zone) : calc.etaUTC;
-        const off = arrZI ? zoneOffsetLabel(arrZI, calc.etaUTC) : "UTC";
+        const off = arrZI ? zoneOffsetLabel(arrZI, calc.etaUTC) : "GMT";
         resultEl.innerHTML =
           '<div class="alt-highlight">'+
             '<div class="stat-tile"><div class="k">Passage time</div><div class="v">'+fmtDuration(calc.hours)+'</div></div>'+
-            '<div class="stat-tile"><div class="k">ETA'+(arrZI?" (Arrival LT)":" (UTC)")+'</div><div class="v" style="color:var(--brass);">'+shown.toFormat("dd LLL, HH:mm")+' <span>('+off+')</span></div></div>'+
+            '<div class="stat-tile"><div class="k">ETA'+(arrZI?" (Arrival LT)":" (GMT)")+'</div><div class="v" style="color:var(--brass);">'+shown.toFormat("dd LLL, HH:mm")+' <span>('+off+')</span></div></div>'+
           '</div>';
       }
 
@@ -3328,6 +3395,10 @@
     });
   }
   document.getElementById("addAltArrivalBtn").addEventListener("click", () => {
+    // PREMIUM: alternative arrival ports are a Pro feature — see the
+    // Premium/paywall section further down for isFeatureUnlocked()/
+    // showPaywall() and the setLocked() decor applied to this button.
+    if(!isFeatureUnlocked()){ showPaywall(); return; }
     state.altArrivals.push(defaultAltArrival());
     saveState();
     renderAltArrivals();
@@ -3402,7 +3473,14 @@
   const reqDateEl = document.getElementById("reqDate");
   const reqTimeEl = document.getElementById("reqTime");
   const reqZoneEl = document.getElementById("reqZone");
-  reqToggle.addEventListener("change", () => { state.reqEnabled = reqToggle.checked; reqBody.hidden = !state.reqEnabled; saveState(); render(); });
+  reqToggle.addEventListener("change", () => {
+    // PREMIUM: Required Speed is a Pro feature — see setLocked() applied to
+    // its whole card further down. Flipping the switch while locked opens
+    // the paywall instead of enabling the section, and snaps the (already
+    // disabled-looking) switch back off so it never visually looks "on".
+    if(!isFeatureUnlocked()){ reqToggle.checked = false; showPaywall(); return; }
+    state.reqEnabled = reqToggle.checked; reqBody.hidden = !state.reqEnabled; saveState(); render();
+  });
   reqDateEl.addEventListener("input", () => { state.reqDate = reqDateEl.value; saveState(); render(); });
   reqTimeEl.addEventListener("input", () => { state.reqTime = reqTimeEl.value; saveState(); render(); });
   reqZoneEl.addEventListener("change", () => { state.reqZone = reqZoneEl.value; saveState(); render(); });
@@ -3521,6 +3599,7 @@
 
   /* ---------------- Rendering ---------------- */
   const resultBody = document.getElementById("resultBody");
+  const resultCardEl = document.getElementById("resultCard");
   const bbValue = document.getElementById("bbValue");
   const bbValueUtc = document.getElementById("bbValueUtc");
   const bbLabel = document.getElementById("bbLabel");
@@ -3529,6 +3608,57 @@
   let lastEtaBBText = "— enter voyage details —";
   let lastEtaBBUtcText = "";
   let lastEtaBBPortLabel = "";
+
+  // Builds the swappable inner content of #varTableWrap only — the empty
+  // message or the table shell (Speed / ETA / Steaming Time, ETA placed
+  // right next to Speed per the current layout). Kept separate from the
+  // #variance/#interval fields themselves (see renderResult()) so updating
+  // the table on every keystroke never touches — and never destroys — those
+  // two input elements. That's the actual fix for decimals not "sticking":
+  // recreating a number input's DOM node while the user is mid-keystroke
+  // (e.g. right after typing the decimal point) silently drops the partial
+  // value when its .value is re-set from a not-yet-complete string.
+  function varTableWrapHtml(rows, focusArrZI){
+    if(!rows.length) return '<p class="result-empty">Set a speed variance above to see a range.</p>';
+    return '<div style="overflow-x:auto;"><table class="var-table"><thead><tr><th>Speed</th><th>ETA '+(focusArrZI?"(Arrival LT)":"(GMT)")+'</th><th>Steaming Time</th></tr></thead><tbody id="varTbody"></tbody></table></div>';
+  }
+  function populateVarTbody(rows, calc, focusArrZI){
+    if(!rows.length) return;
+    const tbody = document.getElementById("varTbody");
+    if(!tbody) return;
+    rows.forEach(r => {
+      const tr = document.createElement("tr");
+      if(r.planned) tr.className = "planned";
+      const h = calc.distance/r.speed;
+      const shown = focusArrZI ? r.etaUTC.setZone(focusArrZI.zone) : r.etaUTC;
+      // Only add the secondary GMT line when the main value shown is
+      // already local time — if there's no arrival zone, "shown" IS GMT.
+      const gmtSub = focusArrZI ? '<div class="cell-sub">'+r.etaUTC.toFormat("dd LLL, HH:mm")+' GMT</div>' : '';
+      tr.innerHTML = '<td>'+r.speed.toFixed(1)+' kn'+(r.planned?'<span class="chip">PLANNED</span>':'')+'</td>'+
+        '<td>'+shown.toFormat("dd LLL, HH:mm")+gmtSub+'</td>'+
+        '<td>'+fmtDuration(h)+'</td>';
+      tbody.appendChild(tr);
+    });
+  }
+  // Lightweight refresh used by the #variance/#interval input handlers —
+  // recomputes just the speed-range table (rows depend on variance/interval;
+  // the primary ETA figure itself doesn't) and swaps only #varTableWrap's
+  // content, leaving the rest of #resultBody — most importantly the
+  // variance/interval inputs themselves — untouched.
+  function renderVarTableWrap(){
+    const focus = getFocusPort();
+    const focusAlt = focus.alt;
+    const calc = focusAlt ? calcETAFor(focusAlt.distance, focusAlt.speed) : primaryETA();
+    if(!calc) return;
+    const focusArrZI = focus.arrZI;
+    const rows = speedTable(calc);
+    const wrap = document.getElementById("varTableWrap");
+    if(!wrap) return;
+    wrap.innerHTML = varTableWrapHtml(rows, focusArrZI);
+    populateVarTbody(rows, calc, focusArrZI);
+    const hintLine = resultBody.querySelector(".eta-hint-line");
+    if(hintLine) hintLine.hidden = !rows.length;
+  }
 
   function wirePortSwitchButtons(){
     resultBody.querySelectorAll(".port-switch-btn").forEach(btn => {
@@ -3551,11 +3681,11 @@
     const intervalEl = document.getElementById("interval");
     if(varianceEl){
       varianceEl.value = state.variance;
-      varianceEl.addEventListener("input", () => { state.variance = varianceEl.value; saveState(); render(); });
+      varianceEl.addEventListener("input", () => { state.variance = varianceEl.value; saveState(); renderVarTableWrap(); });
     }
     if(intervalEl){
       intervalEl.value = state.interval;
-      intervalEl.addEventListener("input", () => { state.interval = intervalEl.value; saveState(); render(); });
+      intervalEl.addEventListener("input", () => { state.interval = intervalEl.value; saveState(); renderVarTableWrap(); });
     }
   }
 
@@ -3602,31 +3732,44 @@
       '</div>';
     }
 
+    // PREMIUM: ETA across speed range is a Pro feature. When locked, the
+    // variance/interval inputs aren't rendered at all (rather than shown
+    // disabled) — simpler than fighting pointer-events on live form
+    // controls, and matches "lock or remove" from the original ask. The
+    // section itself stays visible-but-locked (setLocked() decor below),
+    // consistent with how the rest of the app gates Pro features.
+    const rangeLocked = !isFeatureUnlocked();
     // The speed-range controls always have a home in this card — variance
     // and interval fields — regardless of whether a table can currently be
     // shown. That's what keeps the fields reachable even before variance>0
     // has ever been set. The whole section (controls + table) is collapsible
     // via the chevron next to its heading; default is expanded.
-    const rangeControlsHtml =
+    const rangeControlsHtml = rangeLocked ? "" :
       '<div class="field-row" style="margin-bottom:12px;">'+
         '<div class="field"><label for="variance">Speed variance &plusmn; (kn)</label><input type="number" id="variance" inputmode="decimal" min="0" step="any" placeholder="0"></div>'+
         '<div class="field"><label for="interval">Interval (kn)</label><input type="number" id="interval" inputmode="decimal" min="0.1" step="any" placeholder="0.5"></div>'+
       '</div>';
     const etaCollapsed = !!state.etaSpeedRangeCollapsed;
     function speedRangeSectionHtml(bodyHtml){
-      return '<div class="var-wrap">'+
+      return '<div class="var-wrap'+(rangeLocked?" locked-item":"")+'" id="etaRangeSection">'+
         '<div class="var-wrap-head"><h3 class="collapsible-title" id="etaRangeTitle">'+escHtml("ETA Across Speed Range — "+focusPortLabel)+'</h3>'+
+          (rangeLocked ? "" :
           '<button type="button" class="collapse-btn'+(etaCollapsed?" collapsed":"")+'" id="etaRangeToggle" aria-expanded="'+(!etaCollapsed)+'" aria-label="Toggle speed range table">'+
             '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg>'+
-          '</button>'+
+          '</button>')+
         '</div>'+
-        '<div class="var-wrap-body collapse-wrap'+(etaCollapsed?" collapsed":"")+'" id="etaRangeBody"><div class="collapse-inner">'+bodyHtml+'</div></div>'+
+        (rangeLocked ? "" : '<div class="var-wrap-body collapse-wrap'+(etaCollapsed?" collapsed":"")+'" id="etaRangeBody"><div class="collapse-inner">'+bodyHtml+'</div></div>')+
       '</div>';
     }
 
     function finish(){
       wirePortSwitchButtons();
       wireRangeControls();
+      const rangeSection = document.getElementById("etaRangeSection");
+      if(rangeSection){
+        setLocked(rangeSection, rangeLocked);
+        if(rangeLocked) rangeSection.addEventListener("click", () => showPaywall());
+      }
       const toggleBtn = document.getElementById("etaRangeToggle");
       const toggleBody = document.getElementById("etaRangeBody");
       const toggleTitle = document.getElementById("etaRangeTitle");
@@ -3661,9 +3804,10 @@
                   : "Enter a departure location &amp; time, distance to go and speed to see the ETA.")+
         '</p>'+
         switchHtml+
-        speedRangeSectionHtml(rangeControlsHtml);
+        speedRangeSectionHtml(rangeControlsHtml+'<div id="varTableWrap">'+varTableWrapHtml([], focusArrZI)+'</div>');
       lastEtaBBText = "— enter voyage details —";
       lastEtaBBUtcText = "";
+      if(resultCardEl) resultCardEl.classList.remove("has-value");
       finish();
       return;
     }
@@ -3673,17 +3817,17 @@
     if(etaArr){
       html += '<div class="result-eta-label">Arrival local time</div>';
       html += '<div class="result-eta-date">'+etaArr.toFormat("dd LLL yyyy")+'</div>';
-      html += '<div class="result-eta-time">'+etaArr.toFormat("HH:mm")+' <span>&middot; '+zoneOffsetLabel(focusArrZI, calc.etaUTC)+'</span></div>';
-      html += '<div class="result-eta-utc">UTC: '+calc.etaUTC.toFormat("dd LLL, HH:mm")+'</div>';
+      html += '<div class="result-eta-time">'+etaArr.toFormat("HH:mm")+' <span class="lt-suffix">LT</span> <span>&middot; '+zoneOffsetLabel(focusArrZI, calc.etaUTC)+'</span></div>';
+      html += '<div class="result-eta-utc">GMT: '+calc.etaUTC.toFormat("dd LLL, HH:mm")+'</div>';
       lastEtaBBText = etaArr.toFormat("dd LLL, HH:mm")+" LT";
-      lastEtaBBUtcText = "UTC "+calc.etaUTC.toFormat("dd LLL, HH:mm");
+      lastEtaBBUtcText = "GMT "+calc.etaUTC.toFormat("dd LLL, HH:mm");
     } else {
-      html += '<div class="result-eta-label">Arrival time (UTC)</div>';
+      html += '<div class="result-eta-label">Arrival time (GMT)</div>';
       html += '<div class="result-eta-date">'+calc.etaUTC.toFormat("dd LLL yyyy")+'</div>';
-      html += '<div class="result-eta-time">'+calc.etaUTC.toFormat("HH:mm")+' <span>&middot; UTC</span></div>';
+      html += '<div class="result-eta-time">'+calc.etaUTC.toFormat("HH:mm")+' <span>&middot; GMT</span></div>';
       html += '<p class="result-empty" style="margin-top:8px;">Select an arrival location to convert to local time.</p>';
-      lastEtaBBText = calc.etaUTC.toFormat("dd LLL, HH:mm")+" UTC";
-      lastEtaBBUtcText = ""; // already showing UTC above — no redundant second line
+      lastEtaBBText = calc.etaUTC.toFormat("dd LLL, HH:mm")+" GMT";
+      lastEtaBBUtcText = ""; // already showing GMT above — no redundant second line
     }
 
     html += '<div class="stat-grid">'+
@@ -3698,29 +3842,33 @@
     html += switchHtml;
 
     const rows = speedTable(calc);
-    let sectionBody = rangeControlsHtml;
-    if(rows.length){
-      sectionBody += '<div style="overflow-x:auto;"><table class="var-table"><thead><tr><th>Speed</th><th>Passage</th><th>ETA '+(focusArrZI?"(Arrival LT)":"(UTC)")+'</th></tr></thead><tbody id="varTbody"></tbody></table></div>';
-    } else {
-      sectionBody += '<p class="result-empty">Set a speed variance above to see a range.</p>';
+    // ETA-hint: only worth showing when there's actually a range table to
+    // jump to (rows.length) — pulses gently to draw the eye toward the
+    // collapsible speed-range section without being obnoxious about it.
+    if(rows.length && !rangeLocked){
+      html += '<p class="eta-hint-line"><span class="eta-hint" id="etaHintLink">Click here to view ETA across speed ranges</span></p>';
     }
+    const sectionBody = rangeControlsHtml + '<div id="varTableWrap">'+varTableWrapHtml(rows, focusArrZI)+'</div>';
     html += speedRangeSectionHtml(sectionBody);
     resultBody.innerHTML = html;
-
-    if(rows.length){
-      const tbody = resultBody.querySelector("#varTbody");
-      rows.forEach(r => {
-        const tr = document.createElement("tr");
-        if(r.planned) tr.className = "planned";
-        const h = calc.distance/r.speed;
-        const shown = focusArrZI ? r.etaUTC.setZone(focusArrZI.zone) : r.etaUTC;
-        // Only add the secondary UTC line when the main value shown is
-        // already local time — if there's no arrival zone, "shown" IS UTC.
-        const utcSub = focusArrZI ? '<div class="cell-sub">'+r.etaUTC.toFormat("dd LLL, HH:mm")+' UTC</div>' : '';
-        tr.innerHTML = '<td>'+r.speed.toFixed(1)+' kn'+(r.planned?'<span class="chip">PLANNED</span>':'')+'</td>'+
-          '<td>'+fmtDuration(h)+'</td>'+
-          '<td>'+shown.toFormat("dd LLL, HH:mm")+utcSub+'</td>';
-        tbody.appendChild(tr);
+    populateVarTbody(rows, calc, focusArrZI);
+    // Gold border only once there's a real calculated result to look at —
+    // matches the same treatment on the Consumption tab's ROB summary
+    // cards (see renderConsumInfo()), all sharing .card--result.
+    if(resultCardEl) resultCardEl.classList.add("has-value");
+    const etaHintLink = document.getElementById("etaHintLink");
+    if(etaHintLink){
+      etaHintLink.addEventListener("click", () => {
+        if(state.etaSpeedRangeCollapsed){
+          state.etaSpeedRangeCollapsed = false;
+          saveState();
+          const toggleBody = document.getElementById("etaRangeBody");
+          const toggleBtn = document.getElementById("etaRangeToggle");
+          if(toggleBody) toggleBody.classList.remove("collapsed");
+          if(toggleBtn){ toggleBtn.classList.remove("collapsed"); toggleBtn.setAttribute("aria-expanded", "true"); }
+        }
+        const titleEl = document.getElementById("etaRangeTitle");
+        if(titleEl) titleEl.scrollIntoView({behavior: "smooth", block: "start"});
       });
     }
     finish();
@@ -4202,23 +4350,31 @@
   function renderConsumInfo(){
     renderRobSummaryTitle();
     const el = document.getElementById("consumInfo");
+    // Same gold-border treatment as the ETA tab's #resultCard (.has-value,
+    // see renderResult()) — only once there's a real computed figure to
+    // show, on whichever of the two cards is actually visible right now.
+    const cardEl = document.getElementById(state.consumptionMode==="region" ? "regionRobSummaryCard" : "robSummaryCard");
     if(state.consumptionMode === "region"){
       const totalHours = regionTotalHours();
       if(totalHours==null || !state.routeLegs.length){
         el.innerHTML = "Add route legs with a distance (and speed, if it differs from the ETA tab) to project consumption at arrival.";
+        if(cardEl) cardEl.classList.remove("has-value");
         return;
       }
       el.innerHTML = "<b class=\"text-brass\">By Region</b> &middot; Total transit time: <b>"+fmtDuration(totalHours)+"</b> &middot; "+(totalHours/24).toFixed(2)+" days across "+state.routeLegs.length+" leg"+(state.routeLegs.length>1?"s":"");
+      if(cardEl) cardEl.classList.add("has-value");
       return;
     }
     const calc = getReferenceCalc();
     if(!calc){
       el.innerHTML = "Complete the ETA tab (departure time, distance, speed) to project consumption at arrival.";
+      if(cardEl) cardEl.classList.remove("has-value");
       return;
     }
     const refLabel = getRobReferenceLabel();
     el.innerHTML = (refLabel ? "<b class=\"text-brass\">"+escHtml(refLabel)+"</b> &middot; " : "")+
       "Passage time to ETA: <b>"+fmtDuration(calc.hours)+"</b> &middot; "+(calc.hours/24).toFixed(2)+" days at "+calc.speed.toFixed(1)+" kn";
+    if(cardEl) cardEl.classList.add("has-value");
   }
 
   /* ---------------- By Region mode: legs, mode toggle, region ROB summary ---------------- */
@@ -4537,7 +4693,7 @@
     const depZI = calc.dep.zoneInfo;
     const lines = [];
     lines.push("ETA CALCULATOR REPORT");
-    lines.push("Generated: "+DT.utc().toFormat("dd LLL yyyy HH:mm")+" UTC");
+    lines.push("Generated: "+DT.utc().toFormat("dd LLL yyyy HH:mm")+" GMT");
     lines.push("");
     lines.push("Departure: "+(depZI.label)+" ("+zoneOffsetLabel(depZI, calc.dep.instant.toUTC())+")");
     lines.push("  "+calc.dep.instant.toFormat("dd LLL yyyy HH:mm")+" LT");
@@ -4547,7 +4703,7 @@
     lines.push("Planned speed: "+calc.speed.toFixed(1)+" kn");
     lines.push("Passage time: "+fmtDuration(calc.hours));
     lines.push("");
-    lines.push("ETA (UTC): "+calc.etaUTC.toFormat("dd LLL yyyy HH:mm"));
+    lines.push("ETA (GMT): "+calc.etaUTC.toFormat("dd LLL yyyy HH:mm"));
     if(etaArr) lines.push("ETA (Arrival LT): "+etaArr.toFormat("dd LLL yyyy HH:mm"));
 
     const rows = speedTable(calc);
@@ -4578,7 +4734,7 @@
         if(!altCalc){ lines.push("  Alt "+(idx+1)+" — "+label+": distance not set"); return; }
         const altShown = altZI ? altCalc.etaUTC.setZone(altZI.zone) : altCalc.etaUTC;
         lines.push("  Alt "+(idx+1)+" — "+label+": "+altCalc.distance+" nm, passage "+fmtDuration(altCalc.hours)+
-          " -> ETA "+altShown.toFormat("dd LLL yyyy HH:mm")+(altZI?" LT":" UTC"));
+          " -> ETA "+altShown.toFormat("dd LLL yyyy HH:mm")+(altZI?" LT":" GMT"));
       });
     }
 
@@ -4716,7 +4872,7 @@
       savedAt: DT.utc().toISO(),
       depLabel: calc.dep.zoneInfo.label,
       arrLabel: arrZI ? arrZI.label : "Arrival not set",
-      etaText: etaArr ? etaArr.toFormat("dd LLL, HH:mm")+" LT" : calc.etaUTC.toFormat("dd LLL, HH:mm")+" UTC",
+      etaText: etaArr ? etaArr.toFormat("dd LLL, HH:mm")+" LT" : calc.etaUTC.toFormat("dd LLL, HH:mm")+" GMT",
       distance: calc.distance,
       speed: calc.speed,
       state: JSON.parse(JSON.stringify(state))
@@ -5329,7 +5485,7 @@
   function wireSettingsInfo(){
     const toggle = document.getElementById("settingsThemeToggle");
     if(toggle){
-      toggle.innerHTML = themeIcons[state.theme] + "<span>"+themeLabels[state.theme]+"</span>";
+      toggle.innerHTML = themeIcons[state.theme] + "<span class=\"tt-label\">"+themeLabels[state.theme]+"</span>";
       toggle.addEventListener("click", cycleTheme);
     }
     const helpRow = document.getElementById("settingsHelpRow");
@@ -5436,6 +5592,12 @@
   const consumptionTabBtn = document.querySelector('.main-tab[data-tab="consumption"]');
   const homeCardConsumptionEl = document.getElementById("homeCardConsumption");
   const downloadDesktopBtn = document.getElementById("downloadDesktopBtn");
+  // PREMIUM (free-tier ETA tab gating): alternative arrival ports and
+  // Required Speed — the third gated piece, the ETA-across-speed-range
+  // section itself, is locked per-render inside renderResult() instead
+  // (its DOM node doesn't persist across renders the way these two do).
+  const addAltArrivalBtnEl = document.getElementById("addAltArrivalBtn");
+  const reqCardEl = document.getElementById("reqCard");
   const upgradeToProBtn = document.getElementById("upgradeToProBtn");
   const upgradeToProLabel = document.getElementById("upgradeToProLabel");
   const trialBannerEl = document.getElementById("trialBanner");
@@ -5471,6 +5633,12 @@
     // Desktop download is Premium-only — an active trial unlocks the
     // Consumption Calculator but deliberately NOT the desktop download.
     setLocked(downloadDesktopBtn, !premium);
+    // Free-tier ETA tab gating: alternative ports and Required Speed stay
+    // visible but locked (same treatment as everything else here) — only
+    // the plain single-port ETA calculation is free. The speed-range
+    // section's own lock is applied inside renderResult() each render.
+    setLocked(addAltArrivalBtnEl, !unlocked);
+    setLocked(reqCardEl, !unlocked);
     renderGlobalTrialBanner(unlockedByTrialOnly);
 
     if(premium){
