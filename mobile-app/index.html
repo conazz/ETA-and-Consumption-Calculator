@@ -260,16 +260,6 @@
     border-color:var(--brass);
     background:linear-gradient(160deg, var(--surface) 65%, color-mix(in srgb, var(--brass) 10%, var(--surface)));
   }
-  .eta-hint-line{ margin:10px 0 0; text-align:center; }
-  .eta-hint{
-    display:inline-block;
-    color:var(--brass);
-    font-size:12px;
-    font-weight:600;
-    cursor:pointer;
-    animation:etaHintPulse 2.2s ease-in-out infinite;
-  }
-  @keyframes etaHintPulse{ 0%,100%{ opacity:0.55; } 50%{ opacity:1; } }
   .lt-suffix{ color:var(--brass); font-size:0.7em; font-weight:700; letter-spacing:0.04em; vertical-align:middle; }
   .result-empty{
     color:var(--text-dim);
@@ -728,9 +718,22 @@
     display:flex; align-items:center; justify-content:space-between; gap:10px;
     box-shadow:0 10px 28px -8px var(--shadow);
     cursor:pointer;
+    /* Fade/slide out once scrolled past the actual result card — see
+       updateBottomBarVisibility() — rather than a display:none pop, so it
+       can animate. .bb-hidden is toggled on the wrap, not this element. */
+    transition:opacity .2s ease, transform .2s ease;
   }
+  .bottom-bar.bb-hidden .bottom-bar-inner{ opacity:0; transform:translateY(14px); pointer-events:none; }
   .bottom-bar-inner:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
+  /* Slow flashing gold border once there's a real result to jump to (see
+     updateBottomBar()) — border-color rather than opacity, so it reads as
+     "this whole pill is worth tapping" rather than fading in/out. */
+  .bottom-bar-inner.has-value{ animation:bbBorderFlash 2.6s ease-in-out infinite; }
+  @keyframes bbBorderFlash{ 0%,100%{ border-color:var(--border); } 50%{ border-color:var(--brass); } }
+  .bb-label-row{ display:flex; align-items:center; gap:8px; }
   .bb-label{ font-size:10px; letter-spacing:0.1em; text-transform:uppercase; color:var(--text-dim); font-family:var(--font-display); }
+  .bb-hint{ font-size:10px; font-weight:600; color:var(--brass); animation:bbHintFlash 2.6s ease-in-out infinite; }
+  @keyframes bbHintFlash{ 0%,100%{ opacity:0.5; } 50%{ opacity:1; } }
   .bb-value{ font-family:var(--font-mono); font-size:15px; font-weight:600; color:var(--brass); font-variant-numeric:tabular-nums; }
   .bb-value-utc{ font-family:var(--font-mono); font-size:11px; color:var(--text-dim); font-variant-numeric:tabular-nums; margin-top:1px; }
   .bb-arrow{ color:var(--text-dim); flex:none; }
@@ -1896,6 +1899,7 @@
         <tr><th>Feature</th><th>Free</th><th class="pro-col">Pro</th></tr>
       </thead>
       <tbody>
+        <tr><td>Basic ETA calculation (1 port)</td><td class="cmp-yes">&#10003;</td><td class="cmp-yes">&#10003;</td></tr>
         <tr><td>ETA across speed range</td><td class="cmp-no">&ndash;</td><td class="cmp-yes">&#10003;</td></tr>
         <tr><td>Alternative arrival ports</td><td class="cmp-no">&ndash;</td><td class="cmp-yes">&#10003;</td></tr>
         <tr><td>Required speed</td><td class="cmp-no">&ndash;</td><td class="cmp-yes">&#10003;</td></tr>
@@ -1958,7 +1962,10 @@
 <div class="bottom-bar" id="bottomBarWrap">
   <div class="bottom-bar-inner" id="bottomBar" role="button" tabindex="0" aria-label="Jump to ETA">
     <div>
-      <div class="bb-label" id="bbLabel">ETA</div>
+      <div class="bb-label-row">
+        <div class="bb-label" id="bbLabel">ETA</div>
+        <span class="bb-hint" id="bbHint" hidden></span>
+      </div>
       <div class="bb-value" id="bbValue">— enter voyage details —</div>
       <div class="bb-value-utc" id="bbValueUtc" hidden></div>
     </div>
@@ -3038,7 +3045,9 @@
     }
     OFFSET_OPTIONS.forEach(v => {
       const opt = document.createElement("option");
-      opt.value = v; opt.textContent = v;
+      // value stays the real "UTC+n" identifier (round-tripped through
+      // getZoneInfo()'s zone parsing) — only the visible label says GMT.
+      opt.value = v; opt.textContent = displayOffset(v);
       selectEl.appendChild(opt);
     });
     selectEl.value = selected || "";
@@ -3076,10 +3085,19 @@
     return auto;
   }
 
+  // Display-only: the app's internal fixed-offset zone identifiers are
+  // literally the string "UTC+8" etc. (see fmtOffsetMinutes(), and
+  // fillOffsetSelect() below where the same string is both the <option>'s
+  // value AND its label) — that string gets round-tripped through
+  // getZoneInfo()'s /^UTC[+-]/ parsing, so it must never change. This
+  // wrapper only renames it for what the user actually SEES.
+  function displayOffset(offsetStr){
+    return offsetStr.replace(/^UTC/, "GMT");
+  }
   function zoneOffsetLabel(zoneInfo, atUTC){
-    if(zoneInfo.kind==="manual" || zoneInfo.overridden) return zoneInfo.zone;
+    if(zoneInfo.kind==="manual" || zoneInfo.overridden) return displayOffset(zoneInfo.zone);
     const dt = atUTC.setZone(zoneInfo.zone);
-    return fmtOffsetMinutes(dt.offset);
+    return displayOffset(fmtOffsetMinutes(dt.offset));
   }
 
   function tzBadgeHTML(zoneInfo){
@@ -3352,7 +3370,7 @@
         const off = arrZI ? zoneOffsetLabel(arrZI, calc.etaUTC) : "GMT";
         resultEl.innerHTML =
           '<div class="alt-highlight">'+
-            '<div class="stat-tile"><div class="k">Passage time</div><div class="v">'+fmtDuration(calc.hours)+'</div></div>'+
+            '<div class="stat-tile"><div class="k">Steaming time</div><div class="v">'+fmtDuration(calc.hours)+'</div></div>'+
             '<div class="stat-tile"><div class="k">ETA'+(arrZI?" (Arrival LT)":" (GMT)")+'</div><div class="v" style="color:var(--brass);">'+shown.toFormat("dd LLL, HH:mm")+' <span>('+off+')</span></div></div>'+
           '</div>';
       }
@@ -3603,6 +3621,7 @@
   const bbValue = document.getElementById("bbValue");
   const bbValueUtc = document.getElementById("bbValueUtc");
   const bbLabel = document.getElementById("bbLabel");
+  const bbHint = document.getElementById("bbHint");
   const reqResultEl = document.getElementById("reqResult");
   const etaCardTitle = document.getElementById("etaCardTitle");
   let lastEtaBBText = "— enter voyage details —";
@@ -3656,8 +3675,6 @@
     if(!wrap) return;
     wrap.innerHTML = varTableWrapHtml(rows, focusArrZI);
     populateVarTbody(rows, calc, focusArrZI);
-    const hintLine = resultBody.querySelector(".eta-hint-line");
-    if(hintLine) hintLine.hidden = !rows.length;
   }
 
   function wirePortSwitchButtons(){
@@ -3831,7 +3848,7 @@
     }
 
     html += '<div class="stat-grid">'+
-      '<div class="stat-tile"><div class="k">Passage time</div><div class="v">'+fmtDuration(calc.hours)+'</div></div>'+
+      '<div class="stat-tile"><div class="k">Steaming time</div><div class="v">'+fmtDuration(calc.hours)+'</div></div>'+
       '<div class="stat-tile"><div class="k">Distance</div><div class="v">'+calc.distance.toLocaleString()+' nm</div></div>'+
       '<div class="stat-tile"><div class="k">Speed</div><div class="v">'+calc.speed.toFixed(1)+' kn</div></div>'+
     '</div>';
@@ -3842,35 +3859,18 @@
     html += switchHtml;
 
     const rows = speedTable(calc);
-    // ETA-hint: only worth showing when there's actually a range table to
-    // jump to (rows.length) — pulses gently to draw the eye toward the
-    // collapsible speed-range section without being obnoxious about it.
-    if(rows.length && !rangeLocked){
-      html += '<p class="eta-hint-line"><span class="eta-hint" id="etaHintLink">Click here to view ETA across speed ranges</span></p>';
-    }
     const sectionBody = rangeControlsHtml + '<div id="varTableWrap">'+varTableWrapHtml(rows, focusArrZI)+'</div>';
     html += speedRangeSectionHtml(sectionBody);
     resultBody.innerHTML = html;
     populateVarTbody(rows, calc, focusArrZI);
     // Gold border only once there's a real calculated result to look at —
     // matches the same treatment on the Consumption tab's ROB summary
-    // cards (see renderConsumInfo()), all sharing .card--result.
+    // cards (see renderConsumInfo()), all sharing .card--result. The
+    // "click here to view ETA across speed range" hint that used to live
+    // here moved to the bottom bar (see updateBottomBar()) — it's the one
+    // thing that's actually visible regardless of scroll position, and it
+    // already had the jump-to-section click wired (scrollToBottomBarTarget()).
     if(resultCardEl) resultCardEl.classList.add("has-value");
-    const etaHintLink = document.getElementById("etaHintLink");
-    if(etaHintLink){
-      etaHintLink.addEventListener("click", () => {
-        if(state.etaSpeedRangeCollapsed){
-          state.etaSpeedRangeCollapsed = false;
-          saveState();
-          const toggleBody = document.getElementById("etaRangeBody");
-          const toggleBtn = document.getElementById("etaRangeToggle");
-          if(toggleBody) toggleBody.classList.remove("collapsed");
-          if(toggleBtn){ toggleBtn.classList.remove("collapsed"); toggleBtn.setAttribute("aria-expanded", "true"); }
-        }
-        const titleEl = document.getElementById("etaRangeTitle");
-        if(titleEl) titleEl.scrollIntoView({behavior: "smooth", block: "start"});
-      });
-    }
     finish();
   }
 
@@ -4373,7 +4373,7 @@
     }
     const refLabel = getRobReferenceLabel();
     el.innerHTML = (refLabel ? "<b class=\"text-brass\">"+escHtml(refLabel)+"</b> &middot; " : "")+
-      "Passage time to ETA: <b>"+fmtDuration(calc.hours)+"</b> &middot; "+(calc.hours/24).toFixed(2)+" days at "+calc.speed.toFixed(1)+" kn";
+      "Steaming time to ETA: <b>"+fmtDuration(calc.hours)+"</b> &middot; "+(calc.hours/24).toFixed(2)+" days at "+calc.speed.toFixed(1)+" kn";
     if(cardEl) cardEl.classList.add("has-value");
   }
 
@@ -4641,11 +4641,17 @@
   function updateBottomBar(){
     const activeTab = document.querySelector(".main-tab.active");
     const onConsumption = activeTab && activeTab.dataset.tab === "consumption";
+    let hasValue;
     if(onConsumption){
       bbLabel.textContent = "ROB";
       bbValue.textContent = lastRobBBText;
       bbValueUtc.hidden = true; // ROB summary has no UTC equivalent to show
       bottomBarEl.setAttribute("aria-label", "Jump to ROB across speed range");
+      // Whichever of the two ROB cards is actually visible right now (see
+      // applyRobVisibility()) — .has-value is set on it by renderConsumInfo().
+      const visibleRobCard = state.consumptionMode==="region" ? regionRobSummaryCard : document.getElementById("robSummaryCard");
+      hasValue = !!(visibleRobCard && visibleRobCard.classList.contains("has-value"));
+      bbHint.textContent = "Click here to view ROB across speed range";
     } else {
       bbLabel.textContent = "ETA";
       bbValue.textContent = lastEtaBBText;
@@ -4656,8 +4662,38 @@
       bbValueUtc.textContent = bbSecondary;
       bbValueUtc.hidden = !bbSecondary;
       bottomBarEl.setAttribute("aria-label", "Jump to ETA");
+      hasValue = !!(resultCardEl && resultCardEl.classList.contains("has-value"));
+      bbHint.textContent = "Click here to view ETA across speed range";
     }
+    // Slow flashing border + hint text only once there's a real result to
+    // jump to — matches the gold-border treatment already on the result
+    // cards themselves (renderResult()/renderConsumInfo()).
+    bottomBarEl.classList.toggle("has-value", hasValue);
+    bbHint.hidden = !hasValue;
+    updateBottomBarVisibility();
   }
+
+  // Only shows the bottom bar once the actual result card (whichever tab
+  // is active) has scrolled out of view above the viewport — it stays out
+  // of the way while the real result is already on screen, and appears as
+  // a "jump back to it" aid once you've scrolled past. .bb-hidden fades/
+  // slides the pill out via CSS transition rather than display:none.
+  function updateBottomBarVisibility(){
+    if(bottomBarWrap.style.display === "none") return; // Home/paywall/redeem already hide it entirely
+    const activeTab = document.querySelector(".main-tab.active");
+    const onConsumption = activeTab && activeTab.dataset.tab === "consumption";
+    const targetCard = onConsumption
+      ? (state.consumptionMode==="region" ? regionRobSummaryCard : document.getElementById("robSummaryCard"))
+      : resultCardEl;
+    const scrolledPast = !!(targetCard && targetCard.getBoundingClientRect().bottom < 0);
+    bottomBarWrap.classList.toggle("bb-hidden", !scrolledPast);
+  }
+  let bbScrollTicking = false;
+  window.addEventListener("scroll", () => {
+    if(bbScrollTicking) return;
+    bbScrollTicking = true;
+    requestAnimationFrame(() => { updateBottomBarVisibility(); bbScrollTicking = false; });
+  }, {passive: true});
 
   function refreshAllConsumption(){
     renderConsumInfo();
@@ -4701,7 +4737,7 @@
     lines.push("");
     lines.push("Distance to go: "+calc.distance+" nm");
     lines.push("Planned speed: "+calc.speed.toFixed(1)+" kn");
-    lines.push("Passage time: "+fmtDuration(calc.hours));
+    lines.push("Steaming time: "+fmtDuration(calc.hours));
     lines.push("");
     lines.push("ETA (GMT): "+calc.etaUTC.toFormat("dd LLL yyyy HH:mm"));
     if(etaArr) lines.push("ETA (Arrival LT): "+etaArr.toFormat("dd LLL yyyy HH:mm"));
@@ -4733,7 +4769,7 @@
         const label = altZI ? altZI.label : "arrival not set";
         if(!altCalc){ lines.push("  Alt "+(idx+1)+" — "+label+": distance not set"); return; }
         const altShown = altZI ? altCalc.etaUTC.setZone(altZI.zone) : altCalc.etaUTC;
-        lines.push("  Alt "+(idx+1)+" — "+label+": "+altCalc.distance+" nm, passage "+fmtDuration(altCalc.hours)+
+        lines.push("  Alt "+(idx+1)+" — "+label+": "+altCalc.distance+" nm, steaming time "+fmtDuration(altCalc.hours)+
           " -> ETA "+altShown.toFormat("dd LLL yyyy HH:mm")+(altZI?" LT":" GMT"));
       });
     }
@@ -5654,6 +5690,15 @@
     // expired (per spec: remove the button, don't let it be restarted
     // client-side), and once premium (no reason to trial something owned).
     if(startTrialBtn) startTrialBtn.hidden = premium || currentTrialStatus.status !== "none";
+
+    // The ETA-across-speed-range lock (renderResult()) and the Consumption
+    // tab's own gating are decided fresh every render(), not just toggled
+    // on a fixed element the way setLocked() above does — so without this,
+    // starting a trial (or the launch-time status check resolving) left
+    // that section showing its stale locked state until something else
+    // happened to trigger a render (switching tabs, editing a field). Real
+    // bug, not a one-off: any call to applyPremiumUI() now keeps it in sync.
+    render();
   }
 
   upgradeToProBtn.addEventListener("click", () => {
