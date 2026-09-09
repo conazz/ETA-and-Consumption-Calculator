@@ -112,15 +112,16 @@
   }
 
   /* ---------- Desktop layout ----------
-     Shared by both tabs: .split-col-side (the result / summary card) is
-     pulled visually to the top via `order` below the breakpoint, even
-     though it comes second in the markup, so a wide window can lay it out
-     as a sticky side column instead. Above the breakpoint it becomes a real
-     two-column grid and the bottom summary bar (redundant once the result
-     card is always visible in the sidebar) is hidden. */
+     Shared by both tabs: .split-col-side (the result / summary card) sits
+     after .split-col-main in the markup and, below the breakpoint, simply
+     renders there too — after all the input sections, reachable via the
+     flashing bottom bar (see updateBottomBarVisibility()). Above the
+     breakpoint it becomes a real two-column grid with the result card as a
+     sticky side column instead, and the bottom summary bar (redundant once
+     the result card is always visible in the sidebar) is hidden. */
   .split-grid{ display:flex; flex-direction:column; gap:14px; }
   .split-col-main{ display:flex; flex-direction:column; gap:14px; min-width:0; }
-  .split-col-side{ display:flex; flex-direction:column; gap:14px; order:-1; min-width:0; }
+  .split-col-side{ display:flex; flex-direction:column; gap:14px; min-width:0; }
   /* Sub-grid for the Fuel / Fresh Water / Lube Oil input cards inside the main column. */
   .consum-grid{ display:flex; flex-direction:column; gap:14px; }
 
@@ -477,6 +478,11 @@
   /* ---------- Toggle switch ---------- */
   .switch-row{ display:flex; align-items:center; justify-content:space-between; gap:10px; }
   .switch-row p{ margin:0; font-size:13px; color:var(--text-dim); line-height:1.4; }
+  /* .switch-row p above dims the description paragraph correctly, but its
+     higher specificity also caught the heading (.nameplate) that sits
+     above it — win that back so "Required Speed — <port>" reads the same
+     accent blue as the rest of this app's headings/links. */
+  #reqNameplate{ color:var(--accent); }
   .switch{ position:relative; width:42px; height:24px; flex:none; }
   .switch input{ opacity:0; width:100%; height:100%; position:absolute; margin:0; cursor:pointer; }
   .switch .track{
@@ -491,7 +497,12 @@
   .switch input:checked + .track + .thumb{ transform:translateX(18px); background:var(--accent); }
   .switch input:focus-visible + .track{ outline:2px solid var(--accent); outline-offset:2px; }
 
-  .req-body{ margin-top:14px; padding-top:14px; border-top:1px dashed var(--border); }
+  /* On .collapse-inner rather than .req-body itself — margin/padding/
+     border on the grid container wouldn't shrink away with the
+     grid-template-rows animation below, only its inner track content
+     does, so the divider has to live on the thing that's actually
+     collapsing or it'd stay visibly rendered at 0 height. */
+  .req-body .collapse-inner{ margin-top:14px; padding-top:14px; border-top:1px dashed var(--border); }
   .req-result{
     margin-top:14px; padding:12px 13px; border-radius:10px;
     background:var(--surface2); border:1px solid var(--border);
@@ -1680,8 +1691,10 @@
           <span class="thumb"></span>
         </label>
       </div>
-      <div class="req-body" id="reqBody" hidden>
+      <div class="req-body collapse-wrap" id="reqBody">
+       <div class="collapse-inner">
         <div class="row-gap">
+          <div id="reqPortSwitchWrap"></div>
           <div class="field-row">
             <div class="field">
               <label for="reqDate">Required ETA date</label>
@@ -1702,6 +1715,7 @@
           </div>
         </div>
         <div id="reqResult"></div>
+       </div>
       </div>
     </section>
 
@@ -2902,6 +2916,7 @@
     consumption: defaultConsumption(),
     robReferencePort: "primary",
     etaSpeedRangePort: "primary",
+    reqSpeedPort: "primary",
     etaSpeedRangeCollapsed: false,
     robSpeedRangeCollapsed: false,
     regionRobSummaryCollapsed: false,
@@ -2976,6 +2991,7 @@
       state.altArrivals = normalizeAltArrivals(parsed.altArrivals, state.speed);
       state.robReferencePort = parsed.robReferencePort || "primary";
       state.etaSpeedRangePort = parsed.etaSpeedRangePort || "primary";
+      state.reqSpeedPort = parsed.reqSpeedPort || "primary";
       state.consumptionMode = parsed.consumptionMode === "region" ? "region" : "straight";
       state.robVisible = Object.assign({fuels:true, freshWater:true, lubeOils:true}, parsed.robVisible||{});
       const pc = parsed.consumption || {};
@@ -3497,7 +3513,7 @@
     // the paywall instead of enabling the section, and snaps the (already
     // disabled-looking) switch back off so it never visually looks "on".
     if(!isFeatureUnlocked()){ reqToggle.checked = false; showPaywall(); return; }
-    state.reqEnabled = reqToggle.checked; reqBody.hidden = !state.reqEnabled; saveState(); render();
+    state.reqEnabled = reqToggle.checked; reqBody.classList.toggle("collapsed", !state.reqEnabled); saveState(); render();
   });
   reqDateEl.addEventListener("input", () => { state.reqDate = reqDateEl.value; saveState(); render(); });
   reqTimeEl.addEventListener("input", () => { state.reqTime = reqTimeEl.value; saveState(); render(); });
@@ -3594,12 +3610,12 @@
     return rows;
   }
 
-  // Tracks the same focused port as the ETA card above (via getFocusPort()) —
-  // switching ports there changes which distance/arrival-zone this required-
-  // speed figure is worked out against too, not just the primary voyage.
+  // Has its own independent port focus (getReqFocusPort()/#reqPortSwitchWrap,
+  // renderRequired()) — defaults to the primary arrival port but is never
+  // forced to match whichever port the ETA card's own switcher has focused.
   function requiredSpeedCalc(){
     const dep = departureInstant();
-    const focus = getFocusPort();
+    const focus = getReqFocusPort();
     const distance = parseFloat(focus.distance);
     if(!dep || !isFinite(distance) || distance<=0) return {status:"incomplete"};
     if(!state.reqDate || !state.reqTime) return {status:"incomplete"};
@@ -3706,21 +3722,32 @@
     }
   }
 
-  // Self-heals a stale/deleted port selection, then reports which port the
-  // whole ETA tab — main figure, bottom bar, speed-range table, AND Required
-  // Speed — is currently focused on. The port-switch buttons (built in
-  // renderResult()) are what change this; every consumer just reads it.
-  function getFocusPort(){
+  // Self-heals a stale/deleted port selection, then reports the given
+  // port's distance/speed/zone/label. Shared by getFocusPort() (the ETA
+  // card's own selection, driven by its port-switch buttons) and
+  // getReqFocusPort() (Required Speed's own, independent selection) — each
+  // just names which state field to read/repair.
+  function resolveFocusPort(stateKey){
     const validPortIds = ["primary"].concat(state.altArrivals.map(a => a.id));
-    if(!validPortIds.includes(state.etaSpeedRangePort)) state.etaSpeedRangePort = "primary";
-    const alt = state.etaSpeedRangePort!=="primary"
-      ? state.altArrivals.find(a => a.id === state.etaSpeedRangePort) : null;
+    if(!validPortIds.includes(state[stateKey])) state[stateKey] = "primary";
+    const portId = state[stateKey];
+    const alt = portId!=="primary"
+      ? state.altArrivals.find(a => a.id === portId) : null;
     const distance = alt ? alt.distance : state.distance;
     const speed = alt ? alt.speed : state.speed;
     const arrZI = getZoneInfo(alt ? alt.arr : state.arr);
     const label = arrZI ? arrZI.label : "arrival not set";
     return {alt, distance, speed, arrZI, label};
   }
+  // The ETA tab's own focus — main figure, bottom bar, speed-range table.
+  // The port-switch buttons built in renderResult() are what change this;
+  // every consumer just reads it.
+  function getFocusPort(){ return resolveFocusPort("etaSpeedRangePort"); }
+  // Required Speed's own, independent focus — see the port-switch buttons
+  // built in renderRequired() (#reqPortSwitchWrap). Defaults to the same
+  // primary arrival port but is never forced to match the ETA card's own
+  // selection.
+  function getReqFocusPort(){ return resolveFocusPort("reqSpeedPort"); }
 
   function renderResult(){
     // #resultBody gets fully rebuilt below, which would normally steal focus
@@ -3866,19 +3893,44 @@
     // Gold border only once there's a real calculated result to look at —
     // matches the same treatment on the Consumption tab's ROB summary
     // cards (see renderConsumInfo()), all sharing .card--result. The
-    // "click here to view ETA across speed range" hint that used to live
-    // here moved to the bottom bar (see updateBottomBar()) — it's the one
-    // thing that's actually visible regardless of scroll position, and it
-    // already had the jump-to-section click wired (scrollToBottomBarTarget()).
+    // "click here to view ..." hint lives only on the bottom bar (see
+    // updateBottomBar()) — it's the one thing that's actually visible
+    // regardless of scroll position, and it already has the jump-to-
+    // section click wired (scrollToBottomBarTarget()).
     if(resultCardEl) resultCardEl.classList.add("has-value");
     finish();
   }
 
+  function wireReqPortSwitchButtons(){
+    document.querySelectorAll("#reqPortSwitchWrap .port-switch-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        state.reqSpeedPort = btn.dataset.portSwitch;
+        saveState();
+        render();
+      });
+    });
+  }
+
   function renderRequired(){
-    // Tracks the same port-switch selection as the ETA card, so this heading
-    // always names whichever arrival the required-speed figure below (if
-    // shown) is actually worked out against.
-    document.getElementById("reqNameplate").textContent = "Required Speed — "+getFocusPort().label;
+    // Independent from the ETA card's own port-switch selection — see
+    // getReqFocusPort(). Heading + this card's own port-switch buttons
+    // both reflect that independent focus, defaulting to the primary
+    // arrival port. Updated before the enabled check below so it stays
+    // correct even while the section is collapsed.
+    const reqFocus = getReqFocusPort();
+    document.getElementById("reqNameplate").textContent = "Required Speed — "+reqFocus.label;
+    const switchWrap = document.getElementById("reqPortSwitchWrap");
+    if(switchWrap){
+      if(state.altArrivals.length){
+        switchWrap.innerHTML = '<div class="port-switch">'+
+          '<button type="button" class="port-switch-btn'+(!reqFocus.alt?" active":"")+'" data-port-switch="primary">Primary</button>'+
+          state.altArrivals.map((a,i) => '<button type="button" class="port-switch-btn'+(state.reqSpeedPort===a.id?" active":"")+'" data-port-switch="'+a.id+'">Alt '+(i+1)+'</button>').join("")+
+        '</div>';
+        wireReqPortSwitchButtons();
+      } else {
+        switchWrap.innerHTML = "";
+      }
+    }
     if(!state.reqEnabled) { reqResultEl.innerHTML=""; return; }
     const r = requiredSpeedCalc();
     if(r.status==="incomplete"){
@@ -4643,15 +4695,20 @@
     const onConsumption = activeTab && activeTab.dataset.tab === "consumption";
     let hasValue;
     if(onConsumption){
+      const isRegion = state.consumptionMode==="region";
       bbLabel.textContent = "ROB";
       bbValue.textContent = lastRobBBText;
       bbValueUtc.hidden = true; // ROB summary has no UTC equivalent to show
-      bottomBarEl.setAttribute("aria-label", "Jump to ROB across speed range");
       // Whichever of the two ROB cards is actually visible right now (see
       // applyRobVisibility()) — .has-value is set on it by renderConsumInfo().
-      const visibleRobCard = state.consumptionMode==="region" ? regionRobSummaryCard : document.getElementById("robSummaryCard");
+      const visibleRobCard = isRegion ? regionRobSummaryCard : document.getElementById("robSummaryCard");
       hasValue = !!(visibleRobCard && visibleRobCard.classList.contains("has-value"));
-      bbHint.textContent = "Click here to view ROB across speed range";
+      // Region mode's card is titled "Projected ROB Summary" (not "ROB
+      // Across Speed Range") — match that exact wording rather than a
+      // generic one, same as its own collapsible heading.
+      const robTargetName = isRegion ? "Projected ROB Summary" : "ROB across speed range";
+      bottomBarEl.setAttribute("aria-label", "Jump to "+robTargetName);
+      bbHint.textContent = "Click here to view "+robTargetName;
     } else {
       bbLabel.textContent = "ETA";
       bbValue.textContent = lastEtaBBText;
@@ -5055,7 +5112,7 @@
     dtgInput.value = state.distance; speedInput.value = state.speed;
     // variance/interval inputs are (re)created inside #resultBody on every
     // render — wireRangeControls() sets their value, nothing to do here.
-    reqToggle.checked = state.reqEnabled; reqBody.hidden = !state.reqEnabled;
+    reqToggle.checked = state.reqEnabled; reqBody.classList.toggle("collapsed", !state.reqEnabled);
     reqDateEl.value = state.reqDate; reqTimeEl.value = state.reqTime; reqZoneEl.value = state.reqZone;
     applyRobRangeCollapsedState();
     applyRegionRobRangeCollapsedState();
