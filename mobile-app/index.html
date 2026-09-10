@@ -721,34 +721,35 @@
   @media (min-width: 880px){
     .bottom-bar{ display:none; }
   }
-  .bottom-bar-inner{
-    pointer-events:auto;
-    width:100%; max-width:448px;
-    background:var(--surface); border:1px solid var(--border);
-    border-radius:12px; padding:10px 14px;
-    display:flex; align-items:center; justify-content:space-between; gap:10px;
+  /* Replaces the old text pill — just a gold arrow, bottom-center, that
+     bounces + flashes to draw the eye and scrolls down to whichever
+     result card (ETA / ROB Across Speed Range / Projected ROB Summary)
+     is currently below the viewport when tapped. Hidden by default
+     (opacity:0) — only shown once BOTH conditions hold: there's a real
+     result to jump to (.has-value, toggled in updateBottomBar()) AND
+     that result isn't already on screen (.bb-hidden absent from the
+     wrap, toggled in updateBottomBarVisibility()). */
+  .bottom-arrow-btn{
+    pointer-events:none;
+    width:44px; height:44px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    background:var(--surface); border:1px solid var(--brass);
+    color:var(--brass); cursor:pointer;
     box-shadow:0 10px 28px -8px var(--shadow);
-    cursor:pointer;
-    /* Fade/slide out once scrolled past the actual result card — see
-       updateBottomBarVisibility() — rather than a display:none pop, so it
-       can animate. .bb-hidden is toggled on the wrap, not this element. */
-    transition:opacity .2s ease, transform .2s ease;
+    opacity:0;
+    transition:opacity .2s ease;
   }
-  .bottom-bar.bb-hidden .bottom-bar-inner{ opacity:0; transform:translateY(14px); pointer-events:none; }
-  .bottom-bar-inner:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
-  /* Slow flashing gold border once there's a real result to jump to (see
-     updateBottomBar()) — border-color rather than opacity, so it reads as
-     "this whole pill is worth tapping" rather than fading in/out. */
-  .bottom-bar-inner.has-value{ animation:bbBorderFlash 2.6s ease-in-out infinite; }
-  @keyframes bbBorderFlash{ 0%,100%{ border-color:var(--border); } 50%{ border-color:var(--brass); } }
-  .bb-label-row{ display:flex; align-items:center; gap:8px; }
-  .bb-label{ font-size:10px; letter-spacing:0.1em; text-transform:uppercase; color:var(--text-dim); font-family:var(--font-display); }
-  .bb-hint{ font-size:10px; font-weight:600; color:var(--brass); animation:bbHintFlash 2.6s ease-in-out infinite; }
-  @keyframes bbHintFlash{ 0%,100%{ opacity:0.5; } 50%{ opacity:1; } }
-  .bb-value{ font-family:var(--font-mono); font-size:15px; font-weight:600; color:var(--brass); font-variant-numeric:tabular-nums; }
-  .bb-value-utc{ font-family:var(--font-mono); font-size:11px; color:var(--text-dim); font-variant-numeric:tabular-nums; margin-top:1px; }
-  .bb-arrow{ color:var(--text-dim); flex:none; }
-  .bb-arrow svg{ width:16px; height:16px; }
+  .bottom-arrow-btn svg{ width:22px; height:22px; }
+  .bottom-arrow-btn:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
+  .bottom-arrow-btn.has-value{
+    opacity:1; pointer-events:auto;
+    animation:arrowFlashMove 2.2s ease-in-out infinite;
+  }
+  .bottom-bar.bb-hidden .bottom-arrow-btn{ opacity:0 !important; pointer-events:none; }
+  @keyframes arrowFlashMove{
+    0%,100%{ opacity:0.55; transform:translateY(0); }
+    50%{ opacity:1; transform:translateY(6px); }
+  }
 
   /* ---------- History sheet ---------- */
   /* `display` and `pointer-events` are deliberately kept OFF the base rule below:
@@ -1974,19 +1975,9 @@
 <!-- /.app -->
 
 <div class="bottom-bar" id="bottomBarWrap">
-  <div class="bottom-bar-inner" id="bottomBar" role="button" tabindex="0" aria-label="Jump to ETA">
-    <div>
-      <div class="bb-label-row">
-        <div class="bb-label" id="bbLabel">ETA</div>
-        <span class="bb-hint" id="bbHint" hidden></span>
-      </div>
-      <div class="bb-value" id="bbValue">— enter voyage details —</div>
-      <div class="bb-value-utc" id="bbValueUtc" hidden></div>
-    </div>
-    <div class="bb-arrow">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"></path><path d="m5 12 7-7 7 7"></path></svg>
-    </div>
-  </div>
+  <button type="button" class="bottom-arrow-btn" id="bottomBar" aria-label="Jump to ETA">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"></path><path d="m19 12-7 7-7-7"></path></svg>
+  </button>
 </div>
 
 <div class="sheet-overlay" id="historyOverlay" hidden>
@@ -3634,10 +3625,6 @@
   /* ---------------- Rendering ---------------- */
   const resultBody = document.getElementById("resultBody");
   const resultCardEl = document.getElementById("resultCard");
-  const bbValue = document.getElementById("bbValue");
-  const bbValueUtc = document.getElementById("bbValueUtc");
-  const bbLabel = document.getElementById("bbLabel");
-  const bbHint = document.getElementById("bbHint");
   const reqResultEl = document.getElementById("reqResult");
   const etaCardTitle = document.getElementById("etaCardTitle");
   let lastEtaBBText = "— enter voyage details —";
@@ -4696,37 +4683,25 @@
     let hasValue;
     if(onConsumption){
       const isRegion = state.consumptionMode==="region";
-      bbLabel.textContent = "ROB";
-      bbValue.textContent = lastRobBBText;
-      bbValueUtc.hidden = true; // ROB summary has no UTC equivalent to show
       // Whichever of the two ROB cards is actually visible right now (see
       // applyRobVisibility()) — .has-value is set on it by renderConsumInfo().
       const visibleRobCard = isRegion ? regionRobSummaryCard : document.getElementById("robSummaryCard");
       hasValue = !!(visibleRobCard && visibleRobCard.classList.contains("has-value"));
       // Region mode's card is titled "Projected ROB Summary" (not "ROB
       // Across Speed Range") — match that exact wording rather than a
-      // generic one, same as its own collapsible heading.
+      // generic one, same as its own collapsible heading. aria-label is
+      // the only remaining place this wording shows now that the bar is
+      // just an arrow icon (no visible text) — still matters for screen
+      // readers.
       const robTargetName = isRegion ? "Projected ROB Summary" : "ROB across speed range";
       bottomBarEl.setAttribute("aria-label", "Jump to "+robTargetName);
-      bbHint.textContent = "Click here to view "+robTargetName;
     } else {
-      bbLabel.textContent = "ETA";
-      bbValue.textContent = lastEtaBBText;
-      // Combine the port name and (if shown separately above) UTC time into
-      // one compact secondary line, so switching ports in the ETA card is
-      // reflected here too without needing a third line.
-      const bbSecondary = [lastEtaBBPortLabel, lastEtaBBUtcText].filter(Boolean).join(" · ");
-      bbValueUtc.textContent = bbSecondary;
-      bbValueUtc.hidden = !bbSecondary;
       bottomBarEl.setAttribute("aria-label", "Jump to ETA");
       hasValue = !!(resultCardEl && resultCardEl.classList.contains("has-value"));
-      bbHint.textContent = "Click here to view ETA across speed range";
     }
-    // Slow flashing border + hint text only once there's a real result to
-    // jump to — matches the gold-border treatment already on the result
-    // cards themselves (renderResult()/renderConsumInfo()).
+    // Only flashes/appears once there's a real result to jump to — see
+    // .bottom-arrow-btn.has-value in the stylesheet.
     bottomBarEl.classList.toggle("has-value", hasValue);
-    bbHint.hidden = !hasValue;
     updateBottomBarVisibility();
   }
 
@@ -4742,8 +4717,15 @@
     const targetCard = onConsumption
       ? (state.consumptionMode==="region" ? regionRobSummaryCard : document.getElementById("robSummaryCard"))
       : resultCardEl;
-    const scrolledPast = !!(targetCard && targetCard.getBoundingClientRect().bottom < 0);
-    bottomBarWrap.classList.toggle("bb-hidden", !scrolledPast);
+    // The result cards now live at the BOTTOM of each tab (moved there per
+    // an earlier change), so the common case is the target being entirely
+    // BELOW the viewport, not yet scrolled to — the opposite of when this
+    // check was written for the old top-of-page layout. "Not currently
+    // visible at all" (fully above OR fully below) covers both directions
+    // correctly regardless of layout, rather than assuming one.
+    const rect = targetCard && targetCard.getBoundingClientRect();
+    const inView = !!(rect && rect.top < window.innerHeight && rect.bottom > 0);
+    bottomBarWrap.classList.toggle("bb-hidden", inView);
   }
   let bbScrollTicking = false;
   window.addEventListener("scroll", () => {
@@ -5102,10 +5084,9 @@
     }
     if(el) el.scrollIntoView({behavior: "smooth", block: "start"});
   }
+  // Now a real <button> (was a div[role=button] before), so Enter/Space
+  // activation is native — no manual keydown handling needed.
   bottomBarEl.addEventListener("click", scrollToBottomBarTarget);
-  bottomBarEl.addEventListener("keydown", (e) => {
-    if(e.key==="Enter" || e.key===" "){ e.preventDefault(); scrollToBottomBarTarget(); }
-  });
 
   /* ---------------- Hydrate UI from state (init + after loading history) ---------------- */
   function hydrateUI(){
