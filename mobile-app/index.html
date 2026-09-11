@@ -412,6 +412,33 @@
   }
   .loc-tab.active{ background:var(--accent); border-color:var(--accent); color:var(--accent-ink); }
   .loc-tab:focus-visible{ outline:2px solid var(--accent); outline-offset:1px; }
+  /* Straight / By Region mode switch (#consumModeTabs) — a real sliding
+     segmented control rather than two plain buttons, so the toggle-ness
+     reads from the shape itself. Scoped to .consum-mode-toggle only —
+     .loc-tabs/.loc-tab are shared with the Port/Lat-Long location toggle
+     elsewhere, which stays exactly as it was. */
+  .consum-mode-toggle{ position:relative; }
+  .consum-mode-thumb{
+    position:absolute; top:0; bottom:0; left:0;
+    width:calc(50% - 3px);
+    background:var(--accent); border-radius:8px;
+    transition:transform .28s cubic-bezier(.4,0,.2,1);
+    z-index:0;
+  }
+  .consum-mode-toggle.mode-region .consum-mode-thumb{ transform:translateX(calc(100% + 6px)); }
+  .consum-mode-toggle .loc-tab{
+    position:relative; z-index:1;
+    background:transparent; border-color:transparent;
+    transition:color .2s;
+  }
+  .consum-mode-toggle .loc-tab.active{ background:transparent; border-color:transparent; color:var(--accent-ink); }
+  /* Gentle gold pulse on "By Region" while it's NOT selected — a nudge
+     that it's there to try, same pulsing-hint idiom used elsewhere in this
+     app (e.g. the bottom-arrow's flash). Stops on its own once selected. */
+  .consum-mode-toggle .loc-tab[data-mode="region"]:not(.active){
+    animation:modeHintPulse 2.6s ease-in-out infinite;
+  }
+  @keyframes modeHintPulse{ 0%,100%{ color:var(--text-dim); } 50%{ color:var(--brass); } }
 
   .combo{ position:relative; }
   .combo-list{
@@ -598,6 +625,10 @@
   }
   .consum-result .val{ color:var(--text); }
   .consum-result .brass-text{ color:var(--brass); font-weight:600; }
+  /* Projected ROB Summary rows (regionSummaryRowHTML()) — the consumable
+     name reads as this row's own heading, so it stays white/slightly
+     larger even while the rest of the line (ROB/used figures) is gold. */
+  .rob-summary-name{ color:var(--text); font-size:1.1em; font-weight:700; }
   .text-brass{ color:var(--brass); }
   .consum-result .danger-text{ color:var(--danger); font-weight:600; }
   .consum-chip{
@@ -1758,7 +1789,8 @@
     <div class="split-col-main">
 
     <!-- Straight (default, existing behavior) vs By Region (per-leg) projection -->
-    <div class="loc-tabs" id="consumModeTabs">
+    <div class="loc-tabs consum-mode-toggle" id="consumModeTabs">
+      <span class="consum-mode-thumb" aria-hidden="true"></span>
       <button type="button" class="loc-tab" data-mode="straight">Straight</button>
       <button type="button" class="loc-tab" data-mode="region">By Region</button>
     </div>
@@ -4627,6 +4659,7 @@
     document.querySelectorAll("#consumModeTabs .loc-tab").forEach(btn => {
       btn.classList.toggle("active", btn.dataset.mode === state.consumptionMode);
     });
+    document.getElementById("consumModeTabs").classList.toggle("mode-region", isRegion);
     routeLegsCard.hidden = !isRegion;
     document.getElementById("robSummaryCard").hidden = isRegion;
     regionRobSummaryCard.hidden = !isRegion;
@@ -4692,9 +4725,11 @@
       : "";
     // Gold once there's an actual ROB entered — matches the "something
     // real to look at" treatment used elsewhere (e.g. .card--result.has-value).
-    const nameSpanClass = isFinite(robN) ? " class=\"brass-text\"" : "";
+    // The consumable name itself stays white/slightly larger (.rob-summary-name)
+    // so it reads as the row's own heading rather than blending into the figures.
+    const lineClass = isFinite(robN) ? " brass-text" : "";
     return '<div class="consum-row">'+
-      '<div class="consum-result"><span'+nameSpanClass+'>'+escHtml(name)+': ROB '+fmtQty(robN)+' '+unit+', '+usedText+'</span>'+
+      '<div class="consum-result"><span class="rob-summary-line'+lineClass+'"><span class="rob-summary-name">'+escHtml(name)+'</span>: ROB '+fmtQty(robN)+' '+unit+', '+usedText+'</span>'+
       '<span class="consum-chip '+status+'">'+STATUS_LABEL[status]+'</span></div>'+
       breakdown+
     '</div>';
@@ -4928,7 +4963,7 @@
         state.routeLegs.forEach((leg, i) => {
           const h = regionLegHours(leg);
           const spd = parseFloat(leg.speedOverride) || parseFloat(state.speed);
-          const label = leg.label || ("Leg "+(i+1));
+          const label = "Leg "+(i+1)+(leg.label ? " ("+leg.label+")" : "");
           lines.push("  "+label+": "+(leg.distance||"—")+" nm at "+(isFinite(spd)?spd.toFixed(1):"—")+" kn"+
             (h!=null ? " -> "+fmtDuration(h) : " (incomplete)"));
         });
