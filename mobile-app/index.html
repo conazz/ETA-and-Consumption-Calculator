@@ -460,7 +460,7 @@
     gap:10px;
   }
   .add-port-form:not([hidden]){ display:flex; flex-direction:column; }
-  .btn-row{ display:flex; gap:8px; }
+  .btn-row{ display:flex; gap:8px; flex-wrap:wrap; }
   .btn-row .btn{ flex:1; justify-content:center; }
   .loc-port > .link-btn{ margin-top:8px; display:inline-block; }
 
@@ -568,6 +568,21 @@
     color:var(--accent); margin:10px 0 2px;
   }
   .consum-legrates-heading:first-of-type{ margin-top:8px; }
+  /* Per-leg ROB *results* (Region mode) — same weight/spacing family as
+     .consum-legrates/.consum-legrate-item above (the per-leg *rate
+     inputs*), so the pair reads as one matching input-then-output layout
+     rather than a new pattern. See regionCumulativeRob()/legRobBreakdownHTML(). */
+  .leg-rob-breakdown{ display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
+  .leg-rob-item{
+    flex:1; min-width:88px; padding:7px 8px;
+    background:var(--surface2); border:1px solid var(--border); border-radius:8px;
+  }
+  .leg-rob-item span{
+    display:block; font-size:9.5px; font-weight:600; letter-spacing:0.05em;
+    text-transform:uppercase; color:var(--text-dim); margin-bottom:2px;
+  }
+  .leg-rob-item b{ font-size:12.5px; color:var(--brass); font-weight:600; }
+  .leg-rob-used{ color:var(--text-dim); font-weight:400; font-size:10.5px; margin-top:2px; }
 
   /* Route Legs card (By Region mode) */
   .route-leg{ padding:10px 0; border-top:1px dashed var(--border); }
@@ -799,7 +814,12 @@
   .hist-saved{ font-size:10.5px; color:var(--text-dim); margin-top:6px; letter-spacing:0.03em; }
   .hist-actions{ display:flex; gap:8px; margin-top:10px; }
   .hist-actions .btn{ padding:7px 12px; font-size:12px; }
-  .hist-del{ color:var(--danger); border-color:var(--danger); }
+  .hist-del, .btn-danger{ color:var(--danger); border-color:var(--danger); }
+  .btn-danger:hover{ border-color:var(--danger); }
+  /* Filled solid-red state while a second tap is armed (see clearPageBtn's
+     two-tap-confirm handler) — distinguishes "tap again to confirm" from
+     the button's own always-red resting state above. */
+  .btn-danger.confirm-armed{ background:var(--danger); color:#fff; }
 
   /* ---------- Home screen ---------- */
   .home-view{
@@ -1799,6 +1819,7 @@
         <div class="consum-legrates" id="fwConsLegRates" hidden></div>
         <p class="consum-legrates-heading" id="fwProdLegRatesHeading" hidden>Production</p>
         <div class="consum-legrates" id="fwProdLegRates" hidden></div>
+        <div class="leg-rob-slot" id="fwLegRobSlot"></div>
         <div class="consum-result"><span id="fwResultText">—</span><span class="consum-chip pending" id="fwChip">—</span></div>
         <div class="req-note danger" id="fwWarning" hidden></div>
       </div>
@@ -1878,6 +1899,15 @@
       <button class="btn btn-accent" id="copyBtn" type="button">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
         Copy report
+      </button>
+      <!-- Clears only whichever page is currently active (ETA tab /
+           Consumption Straight / Consumption Region) — see clearCurrentPageBtn's
+           handler. Same two-tap-confirm pattern as "Clear history" in the
+           voyage-history sheet, reused rather than reinvented. Never touches
+           saved history itself. -->
+      <button class="btn btn-danger" id="clearPageBtn" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"></path><path d="M3 4v5h5"></path></svg>
+        <span id="clearPageBtnLabel">Clear</span>
       </button>
     </div>
 
@@ -3997,6 +4027,51 @@
     });
     return total;
   }
+  // Cumulative ROB after each leg boundary — rows[i].robAfter already
+  // includes every leg up to and including i. A leg with no distance/
+  // speed/rate yet contributes 0 for that step (same progressive
+  // philosophy as regionTotalHours()'s own comment above), so a
+  // partially-filled-in route still shows correct running figures for
+  // whichever legs ARE complete.
+  // usedThisLeg/producedThisLeg are that ONE leg's own contribution (not
+  // cumulative) — robAfter is still the running total through that leg,
+  // same as before.
+  function regionCumulativeRob(startRob, rateGetter, produceGetter){
+    let used = 0, produced = 0;
+    return state.routeLegs.map((leg, i) => {
+      const h = regionLegHours(leg);
+      let usedThisLeg = 0, producedThisLeg = 0;
+      if(h!=null){
+        const rate = parseFloat(rateGetter(leg));
+        if(isFinite(rate)) usedThisLeg = (h/24)*rate;
+        if(produceGetter){
+          const p = parseFloat(produceGetter(leg));
+          if(isFinite(p)) producedThisLeg = (h/24)*p;
+        }
+      }
+      used += usedThisLeg;
+      produced += producedThisLeg;
+      return {legIndex:i, robAfter: startRob - used + produced, usedThisLeg, producedThisLeg};
+    });
+  }
+  // Shared display for the per-leg breakdown above — one card per leg,
+  // labeled "ROB at Leg N", except the last one which is always "ROB at
+  // Arrival Port" (it's the same figure that used to be the sole
+  // "Projected ROB at ETA: X" line — replaced, not duplicated, by this)
+  // plus how much was actually consumed (and produced, for fresh water)
+  // on that specific leg, not cumulative.
+  function legRobBreakdownHTML(rows, unit, hasProduce){
+    if(!rows.length) return "";
+    return '<div class="leg-rob-breakdown">'+
+      rows.map((r,i) => {
+        const label = i===rows.length-1 ? "ROB at Arrival Port" : "ROB at Leg "+(r.legIndex+1);
+        const usedLine = hasProduce
+          ? "Used "+fmtQty(r.usedThisLeg)+" "+unit+", produced "+fmtQty(r.producedThisLeg)+" "+unit
+          : "Used "+fmtQty(r.usedThisLeg)+" "+unit;
+        return '<div class="leg-rob-item"><span>'+label+'</span><b>'+fmtQty(r.robAfter)+' '+unit+'</b><div class="leg-rob-used">'+usedLine+'</div></div>';
+      }).join("")+
+    '</div>';
+  }
   function fmtQty(n){
     if(!isFinite(n)) return "—";
     return n.toLocaleString(undefined, {minimumFractionDigits:1, maximumFractionDigits:1});
@@ -4122,12 +4197,14 @@
           '<span class="col-del">'+(item.removable ? '<button type="button" class="consum-del" aria-label="Remove">'+TRASH_SVG+'</button>' : '')+'</span>'+
         '</div>'+
         (isRegion ? '<div class="consum-legrates"></div>' : '')+
+        (isRegion ? '<div class="leg-rob-slot"></div>' : '')+
         '<div class="consum-result"><span class="c-result-text">—</span><span class="consum-chip pending c-chip">—</span></div>'+
         '<div class="req-note danger c-warning" hidden></div>';
       row.querySelector(".name").textContent = item.name;
       const robEl = row.querySelector(".c-rob");
       const perDayEl = row.querySelector(".c-perday"); // null in region mode
       const resultText = row.querySelector(".c-result-text");
+      const legRobSlot = row.querySelector(".leg-rob-slot"); // null outside region mode
       const chip = row.querySelector(".c-chip");
       const warningEl = row.querySelector(".c-warning");
       robEl.value = item.rob;
@@ -4162,6 +4239,11 @@
             projected = rob - used;
             burnRate = totalHours>0 ? used/(totalHours/24) : 0;
           }
+          if(legRobSlot){
+            legRobSlot.innerHTML = (isFinite(rob) && state.routeLegs.length)
+              ? legRobBreakdownHTML(regionCumulativeRob(rob, leg => leg[rateMapKey][item.id]), unitFor(listKey), false)
+              : "";
+          }
         } else {
           const days = daysToETA();
           const rob = parseFloat(robEl.value), perDay = parseFloat(perDayEl.value);
@@ -4169,7 +4251,10 @@
           burnRate = isFinite(perDay) ? perDay : 0;
         }
         const status = consumableStatus(projected, burnRate);
-        resultText.textContent = projected==null ? "Enter ROB / per-day — complete ETA tab" : "Projected ROB at ETA: "+fmtQty(projected)+" "+unitFor(listKey);
+        // In region mode the per-leg breakdown above replaces this single
+        // line once there's something to show it — this text stays only as
+        // the "not ready yet" guidance.
+        resultText.textContent = projected!=null && isRegion ? "" : (projected==null ? "Enter ROB / per-day — complete ETA tab" : "Projected ROB at ETA: "+fmtQty(projected)+" "+unitFor(listKey));
         resultText.className = projected==null ? "c-result-text" : "c-result-text "+(projected<0 ? "danger-text" : "brass-text");
         chip.textContent = STATUS_LABEL[status];
         chip.className = "consum-chip c-chip "+status;
@@ -4223,6 +4308,7 @@
   const fwCons = document.getElementById("fwCons");
   const fwProd = document.getElementById("fwProd");
   const fwResultText = document.getElementById("fwResultText");
+  const fwLegRobSlot = document.getElementById("fwLegRobSlot");
   const fwChip = document.getElementById("fwChip");
   const fwSpeedSummary = document.getElementById("fwSpeedSummary");
   const fwWarning = document.getElementById("fwWarning");
@@ -4268,6 +4354,11 @@
         projected = rob + produced - used;
         burnRate = totalHours>0 ? (used-produced)/(totalHours/24) : 0;
       }
+      if(fwLegRobSlot){
+        fwLegRobSlot.innerHTML = (isFinite(rob) && state.routeLegs.length)
+          ? legRobBreakdownHTML(regionCumulativeRob(rob, leg => leg.fwCons, leg => leg.fwProd), fwUnit, true)
+          : "";
+      }
     } else {
       const days = daysToETA();
       const cons = parseFloat(fwCons.value) || 0;
@@ -4276,7 +4367,7 @@
       burnRate = cons - prod;
     }
     const status = consumableStatus(projected, burnRate);
-    fwResultText.textContent = projected==null ? "Enter ROB — complete ETA tab" : "Projected ROB at ETA: "+fmtQty(projected)+" "+fwUnit;
+    fwResultText.textContent = projected!=null && isRegion ? "" : (projected==null ? "Enter ROB — complete ETA tab" : "Projected ROB at ETA: "+fmtQty(projected)+" "+fwUnit);
     fwResultText.className = projected==null ? "" : (projected<0 ? "danger-text" : "brass-text");
     fwChip.textContent = STATUS_LABEL[status];
     fwChip.className = "consum-chip "+status;
@@ -4575,8 +4666,13 @@
   // for individual Straight-mode rows.
   // producedAmount is null for fuel/lube (no production concept there); a
   // number for Fresh Water, which nets consumption against production.
-  function regionSummaryRowHTML(name, rob, usedAmount, producedAmount, unit){
+  // rateGetter/produceGetter (not precomputed totals) so this can also
+  // build the per-leg breakdown via regionCumulativeRob() — one source of
+  // truth for both the "used X" summary line and the leg-by-leg figures.
+  function regionSummaryRowHTML(name, rob, rateGetter, produceGetter, unit){
     const robN = parseFloat(rob);
+    const usedAmount = regionTotalUsed(rateGetter);
+    const producedAmount = produceGetter ? regionTotalUsed(produceGetter) : null;
     const net = usedAmount - (producedAmount||0);
     let projected = null, burnRate = 0;
     const totalHours = regionTotalHours();
@@ -4586,12 +4682,21 @@
     }
     const status = consumableStatus(projected, burnRate);
     const usedText = producedAmount!=null
-      ? "used "+fmtQty(usedAmount)+" "+unit+", produced "+fmtQty(producedAmount)+" "+unit
-      : "used "+fmtQty(usedAmount)+" "+unit;
+      ? "total used "+fmtQty(usedAmount)+" "+unit+", produced "+fmtQty(producedAmount)+" "+unit
+      : "total used "+fmtQty(usedAmount)+" "+unit;
+    // Per-leg breakdown replaces the old single "→ final" figure here —
+    // the last leg in it is that same final/ETA number, just no longer
+    // the only one shown.
+    const breakdown = (isFinite(robN) && state.routeLegs.length)
+      ? legRobBreakdownHTML(regionCumulativeRob(robN, rateGetter, produceGetter), unit, !!produceGetter)
+      : "";
+    // Gold once there's an actual ROB entered — matches the "something
+    // real to look at" treatment used elsewhere (e.g. .card--result.has-value).
+    const nameSpanClass = isFinite(robN) ? " class=\"brass-text\"" : "";
     return '<div class="consum-row">'+
-      '<div class="consum-result"><span>'+escHtml(name)+': ROB '+fmtQty(robN)+' '+unit+', '+usedText+
-        (projected!=null ? ' &rarr; <b class="'+(projected<0?"danger-text":"brass-text")+'">'+fmtQty(projected)+' '+unit+'</b>' : '')+'</span>'+
+      '<div class="consum-result"><span'+nameSpanClass+'>'+escHtml(name)+': ROB '+fmtQty(robN)+' '+unit+', '+usedText+'</span>'+
       '<span class="consum-chip '+status+'">'+STATUS_LABEL[status]+'</span></div>'+
+      breakdown+
     '</div>';
   }
   function renderRegionRobSummary(){
@@ -4604,15 +4709,12 @@
     }
     let html = "";
     state.consumption.fuels.forEach(it => {
-      const used = regionTotalUsed(leg => leg.fuelRates[it.id]);
-      html += regionSummaryRowHTML(it.name, it.rob, used, null, unitFor("fuels"));
+      html += regionSummaryRowHTML(it.name, it.rob, leg => leg.fuelRates[it.id], null, unitFor("fuels"));
     });
     const fw = state.consumption.freshWater;
-    const fwUsed = regionTotalUsed(leg => leg.fwCons), fwProd = regionTotalUsed(leg => leg.fwProd);
-    html += regionSummaryRowHTML("Fresh Water", fw.rob, fwUsed, fwProd, fw.unit);
+    html += regionSummaryRowHTML("Fresh Water", fw.rob, leg => leg.fwCons, leg => leg.fwProd, fw.unit);
     state.consumption.lubeOils.forEach(it => {
-      const used = regionTotalUsed(leg => leg.lubeRates[it.id]);
-      html += regionSummaryRowHTML(it.name, it.rob, used, null, unitFor("lubeOils"));
+      html += regionSummaryRowHTML(it.name, it.rob, leg => leg.lubeRates[it.id], null, unitFor("lubeOils"));
     });
     el.innerHTML = html;
   }
@@ -4836,21 +4938,34 @@
       if(anyRegionData){
         lines.push("");
         lines.push("PROJECTED ROB SUMMARY (projected at ETA, "+(totalHours/24).toFixed(2)+" days total)");
+        // Returns a group of lines (summary + one per leg, last marked
+        // "(ETA)") rather than a single line — regionCumulativeRob() is the
+        // same source of truth the on-screen breakdown uses (see
+        // legRobBreakdownHTML()), just formatted as plain text here.
         function regionRow(item, unit, rateMapKey){
           const rob = parseFloat(item.rob);
           if(!isFinite(rob)) return null;
           const used = regionTotalUsed(leg => leg[rateMapKey][item.id]);
-          return "  "+item.name+": ROB "+rob.toFixed(1)+" "+unit+", used "+fmtQty(used)+" "+unit+" -> projected "+fmtQty(rob-used)+" "+unit+" at ETA";
+          const out = ["  "+item.name+": ROB "+rob.toFixed(1)+" "+unit+", used "+fmtQty(used)+" "+unit];
+          regionCumulativeRob(rob, leg => leg[rateMapKey][item.id]).forEach((r,i,arr) => {
+            const label = i===arr.length-1 ? "ROB at Arrival Port" : "ROB at Leg "+(r.legIndex+1);
+            out.push("    "+label+": "+fmtQty(r.robAfter)+" "+unit+" (used "+fmtQty(r.usedThisLeg)+" "+unit+")");
+          });
+          return out;
         }
         const fuelLines = state.consumption.fuels.map(it => regionRow(it, fuelUnit, "fuelRates")).filter(Boolean);
         const lubeLines = state.consumption.lubeOils.map(it => regionRow(it, lubeUnit, "lubeRates")).filter(Boolean);
-        if(fuelLines.length){ lines.push("Bunker fuel ("+fuelUnit+"):"); fuelLines.forEach(l=>lines.push(l)); }
+        if(fuelLines.length){ lines.push("Bunker fuel ("+fuelUnit+"):"); fuelLines.forEach(group=>group.forEach(l=>lines.push(l))); }
         const fwRobN = parseFloat(fw.rob);
         if(isFinite(fwRobN)){
           const used = regionTotalUsed(leg => leg.fwCons), produced = regionTotalUsed(leg => leg.fwProd);
-          lines.push("Fresh water: ROB "+fwRobN.toFixed(1)+" "+fw.unit+", used "+fmtQty(used)+" "+fw.unit+", produced "+fmtQty(produced)+" "+fw.unit+" -> projected "+fmtQty(fwRobN+produced-used)+" "+fw.unit+" at ETA");
+          lines.push("Fresh water: ROB "+fwRobN.toFixed(1)+" "+fw.unit+", used "+fmtQty(used)+" "+fw.unit+", produced "+fmtQty(produced)+" "+fw.unit);
+          regionCumulativeRob(fwRobN, leg => leg.fwCons, leg => leg.fwProd).forEach((r,i,arr) => {
+            const fwLabel = i===arr.length-1 ? "ROB at Arrival Port" : "ROB at Leg "+(r.legIndex+1);
+            lines.push("  "+fwLabel+": "+fmtQty(r.robAfter)+" "+fw.unit+" (used "+fmtQty(r.usedThisLeg)+" "+fw.unit+", produced "+fmtQty(r.producedThisLeg)+" "+fw.unit+")");
+          });
         }
-        if(lubeLines.length){ lines.push("Lube oil ("+lubeUnit+"):"); lubeLines.forEach(l=>lines.push(l)); }
+        if(lubeLines.length){ lines.push("Lube oil ("+lubeUnit+"):"); lubeLines.forEach(group=>group.forEach(l=>lines.push(l))); }
       }
     } else {
       const refCalc = getReferenceCalc();
@@ -5042,6 +5157,63 @@
       historyClearBtn.dataset.confirm = "";
       historyClearBtn.textContent = "Clear history";
       historyClearBtn.classList.remove("hist-del");
+    }, 3000);
+  });
+
+  // "Clear" (main btn-row, next to Save to history / Copy report) — resets
+  // only whichever page is currently active, never saved voyage history.
+  // ROB values (Bunker Fuel/Lube Oil/Fresh Water starting amounts) are
+  // deliberately left untouched everywhere — they're shared between
+  // Straight and Region mode, not really a "per-page" input. Same two-tap-
+  // confirm pattern as historyClearBtn above, reused rather than reinvented.
+  function clearCurrentPageInputs(){
+    const activeTab = document.querySelector(".main-tab.active");
+    const onConsumption = activeTab && activeTab.dataset.tab === "consumption";
+    if(!onConsumption){
+      state.dateStr = ""; state.timeStr = "";
+      state.dep = defaultLoc();
+      state.arr = defaultLoc();
+      state.altArrivals = [];
+      state.distance = ""; state.speed = "";
+      state.variance = "2"; state.interval = "0.5";
+      state.reqEnabled = false; state.reqDate = ""; state.reqTime = ""; state.reqZone = "arr";
+      state.etaSpeedRangePort = "primary"; state.reqSpeedPort = "primary";
+    } else if(state.consumptionMode === "region"){
+      // Same two-blank-legs starting point already used when first
+      // switching into Region mode — clears every per-leg rate and each
+      // leg's own distance/speed override too, since those live on the
+      // leg objects being replaced.
+      state.routeLegs = [defaultRouteLeg(""), defaultRouteLeg("")];
+    } else {
+      state.consumption.fuels.forEach(it => { it.perDay = ""; });
+      state.consumption.lubeOils.forEach(it => { it.perDay = ""; });
+      state.consumption.freshWater.consPerDay = "";
+      state.consumption.freshWater.prodPerDay = "";
+    }
+    saveState();
+    hydrateUI();
+    toast("Cleared");
+  }
+  const clearPageBtn = document.getElementById("clearPageBtn");
+  const clearPageBtnLabel = document.getElementById("clearPageBtnLabel");
+  let clearPageConfirmTimer = null;
+  clearPageBtn.addEventListener("click", () => {
+    if(clearPageBtn.dataset.confirm === "1"){
+      clearPageBtn.dataset.confirm = "";
+      clearPageBtnLabel.textContent = "Clear";
+      clearPageBtn.classList.remove("confirm-armed");
+      clearTimeout(clearPageConfirmTimer);
+      clearCurrentPageInputs();
+      return;
+    }
+    clearPageBtn.dataset.confirm = "1";
+    clearPageBtnLabel.textContent = "Tap again to confirm";
+    clearPageBtn.classList.add("confirm-armed");
+    clearTimeout(clearPageConfirmTimer);
+    clearPageConfirmTimer = setTimeout(() => {
+      clearPageBtn.dataset.confirm = "";
+      clearPageBtnLabel.textContent = "Clear";
+      clearPageBtn.classList.remove("confirm-armed");
     }, 3000);
   });
 
