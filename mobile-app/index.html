@@ -477,6 +477,15 @@
     color:var(--accent); cursor:pointer;
   }
   .link-btn:hover{ text-decoration:underline; }
+  .link-btn-danger{ color:var(--danger); }
+  /* Freshwater Planner's fill/draw sequence rows — compact up/down icon
+     buttons, reusing .icon-btn's shape at a smaller footprint since these
+     sit inline in a list row rather than a topbar. */
+  .fw-seq-row{ display:flex; align-items:center; justify-content:space-between; gap:8px; padding:7px 8px; background:var(--surface2); border:1px solid var(--border); border-radius:8px; margin-bottom:6px; }
+  .fw-seq-btns{ display:flex; gap:4px; }
+  .fw-seq-btn{ width:26px; height:26px; }
+  .fw-seq-btn svg{ width:14px; height:14px; }
+  .fw-seq-btn:disabled{ opacity:0.35; cursor:default; }
   .link-btn:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
   .tz-override-row{ margin-top:8px; }
   /* display lives on :not([hidden]), not the base rule — see the note on
@@ -889,7 +898,7 @@
   .home-social-link:hover{ color:var(--accent); border-color:var(--accent); }
   .home-social-link svg{ width:17px; height:17px; }
   .home-divider{ height:1px; background:var(--border); width:64px; margin:0 auto 24px; }
-  .home-grid{ display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  .home-grid{ display:grid; grid-template-columns:repeat(auto-fit, minmax(130px, 1fr)); gap:14px; }
   .home-card{
     display:flex; flex-direction:column; align-items:center; gap:10px;
     text-align:center; padding:24px 12px; cursor:pointer;
@@ -905,6 +914,7 @@
   .home-card-icon svg{ width:24px; height:24px; }
   .home-card-eta .home-card-icon{ background:color-mix(in srgb, var(--accent) 18%, var(--surface2)); color:var(--accent); }
   .home-card-consum .home-card-icon{ background:color-mix(in srgb, var(--brass) 18%, var(--surface2)); color:var(--brass); }
+  .home-card-fw .home-card-icon{ background:color-mix(in srgb, var(--ok) 18%, var(--surface2)); color:var(--ok); }
   .home-footer{ margin-top:26px; text-align:center; font-size:11px; color:var(--text-dim); }
 
   /* ---------- Home screen ambient motion ----------
@@ -1626,6 +1636,12 @@
         </span>
         Consumption Calculator
       </button>
+      <button type="button" class="card home-card home-card-fw" id="homeCardFreshwater">
+        <span class="home-card-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5s6 7 6 11.5a6 6 0 0 1-12 0c0-4.5 6-11.5 6-11.5Z"></path></svg>
+        </span>
+        Freshwater Planner
+      </button>
     </div>
 
     <p class="home-footer" id="homeFooter"></p>
@@ -2030,6 +2046,93 @@
     <button type="button" class="upgrade-btn" id="redeemSubmitBtn">Redeem</button>
     <p class="redeem-error" id="redeemError">Invalid or already used code</p>
     <p class="redeem-success" id="redeemSuccess">Success! Consumption Pro is now unlocked.</p>
+  </div>
+</div>
+
+<!-- FRESHWATER PLANNER — a separate top-level tool, independent of the
+     Consumption tab's own simple Fresh Water line (state.freshwaterPlanner
+     vs. state.consumption.freshWater; never read from/written to each
+     other). Reached only via its own Home card, not nested in the
+     ETA/Consumption .main-tabs pill switcher. -->
+<div id="freshwaterView" hidden>
+  <div class="full-view">
+    <div class="full-view-topbar">
+      <button class="icon-btn" id="fwBackBtn" type="button" aria-label="Back">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"></path></svg>
+      </button>
+      <h1>Freshwater Planner</h1>
+    </div>
+
+    <p class="req-note" style="margin-top:-6px;">Plan generator-stop timing across multiple tanks so levels land on a target by arrival.</p>
+
+    <!-- TANKS -->
+    <section class="card">
+      <p class="nameplate">Tanks <select class="unit-select" id="fwPlannerUnitSelect" aria-label="Freshwater Planner unit"></select></p>
+      <div id="fwTanksList"></div>
+      <button type="button" class="link-btn" id="fwAddTankBtn" style="margin-top:6px;">+ Add tank</button>
+    </section>
+
+    <!-- VOYAGE INPUTS -->
+    <section class="card">
+      <p class="nameplate">Voyage Inputs <span class="rivet"></span></p>
+      <p class="req-note" style="margin-top:-6px;">Break the voyage into legs, same as Consumption's By Region mode — each with its own distance (and speed, if it differs from the ETA tab's planned speed).</p>
+      <div id="fwLegsList"></div>
+      <button type="button" class="link-btn" id="fwAddLegBtn" style="margin-top:6px;">+ Add leg</button>
+      <p class="req-note" id="fwLegTotalNote" style="margin-top:8px;"></p>
+      <div class="row-gap" style="margin-top:10px;">
+        <div class="field">
+          <label for="fwPortSelect">Reference port (max distance check)</label>
+          <select id="fwPortSelect"></select>
+        </div>
+      </div>
+      <p class="consum-legrates-heading" style="margin-top:14px;">Freshwater Generator Start</p>
+      <div class="row-gap">
+        <div class="field-row">
+          <div class="field">
+            <label for="fwGenDate">Start date</label>
+            <input type="date" id="fwGenDate">
+          </div>
+          <div class="field">
+            <label for="fwGenTime">Start time</label>
+            <input type="time" id="fwGenTime">
+          </div>
+        </div>
+        <div class="field">
+          <label for="fwGenZone">Time entered is local to</label>
+          <select id="fwGenZone"></select>
+        </div>
+      </div>
+      <p class="consum-legrates-heading" style="margin-top:14px;">Rates</p>
+      <div class="row-gap">
+        <div class="field-row">
+          <div class="field">
+            <label for="fwConsPerDay">Avg consumption / day</label>
+            <input type="number" id="fwConsPerDay" inputmode="decimal" min="0" step="any" placeholder="0.0">
+          </div>
+          <div class="field">
+            <label for="fwProdPerDay">Avg production / day</label>
+            <input type="number" id="fwProdPerDay" inputmode="decimal" min="0" step="any" placeholder="0.0">
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SEQUENCING -->
+    <section class="card">
+      <p class="nameplate">Fill / Draw Sequence <span class="rivet"></span></p>
+      <p class="req-note" style="margin-top:-6px;">Which tank fills (or drains) next once the current one is full (or empty). Only tanks flagged Production/Consumption below appear here.</p>
+      <p class="consum-legrates-heading">Production fill order</p>
+      <div id="fwProdSeqList"></div>
+      <p class="consum-legrates-heading">Consumption draw order</p>
+      <div id="fwConsSeqList"></div>
+    </section>
+
+    <!-- RESULTS -->
+    <section class="card card--result" id="fwResultsCard">
+      <p class="nameplate">The plan: <span class="rivet"></span></p>
+      <div id="fwResultsBody"></div>
+    </section>
+
   </div>
 </div>
 
@@ -2958,6 +3061,30 @@
   // (main engine + gensets running different grades simultaneously).
   const defaultRouteLeg = (label) => ({id: newItemId(), label: label||"", distance:"", speedOverride:"", fuelRates:{}, lubeRates:{}, fwCons:"", fwProd:""});
 
+  // Freshwater Planner — deliberately independent of state.consumption.freshWater
+  // above (a different tool answering a different question — generator-stop
+  // timing across multiple tanks, not a ship-wide ROB overview). role.production/
+  // consumption both false means Reserve/Standby — no separate boolean needed,
+  // that state is just the absence of either role.
+  const defaultFwTank = (name) => ({
+    id: newItemId(), name: name||"", capacity: "", rob: "",
+    role: {production:false, consumption:false},
+    hypermist: false, alarmThreshold: "",
+    target: ""    // per-tank target ROB at arrival — replaces the old combined targetAtArrival
+  });
+  // Mirrors defaultRouteLeg() (Consumption tab's By Region mode) but only
+  // carries what this tool needs to total up transit hours — no fuel/lube
+  // rate maps, those don't apply here.
+  const defaultFwLeg = (label) => ({id: newItemId(), label: label||"", distance:"", speedOverride:""});
+  const defaultFreshwaterPlanner = () => ({
+    tanks: [defaultFwTank("FW Tank 1"), defaultFwTank("FW Tank 2")],
+    unit: "m³",
+    consPerDay: "", prodPerDay: "",
+    legs: [defaultFwLeg(""), defaultFwLeg("")],
+    genDate: "", genTime: "", genZone: "UTC+0",
+    prodSequence: [], consSequence: []
+  });
+
   let state = {
     theme: "system",
     dateStr: "", timeStr: "",
@@ -2970,6 +3097,7 @@
     robReferencePort: "primary",
     etaSpeedRangePort: "primary",
     reqSpeedPort: "primary",
+    fwPlannerPort: "primary",
     etaSpeedRangeCollapsed: false,
     robSpeedRangeCollapsed: false,
     regionRobSummaryCollapsed: false,
@@ -2977,7 +3105,8 @@
     // — independent of robSpeedRangeCollapsed above, which hides the whole card.
     robVisible: {fuels:true, freshWater:true, lubeOils:true},
     consumptionMode: "straight",
-    routeLegs: []
+    routeLegs: [],
+    freshwaterPlanner: defaultFreshwaterPlanner()
   };
 
   const STORE_KEY = "bridge-eta-state-v1";
@@ -3031,6 +3160,49 @@
     syncLegRateKeys(legs);
     return legs;
   }
+  // Self-healing, same philosophy as getFocusPort()'s stale-selection
+  // repair — called after every tank add/delete/role-toggle (not just on
+  // load) so prodSequence/consSequence never drift out of sync with which
+  // tanks actually carry that role: a tank just flagged for a role is
+  // appended to that sequence's end; one just unflagged (or deleted) is
+  // dropped from it.
+  function normalizeFreshwaterPlanner(raw){
+    const src = (raw && typeof raw==="object") ? raw : {};
+    const tanks = (Array.isArray(src.tanks) && src.tanks.length) ? src.tanks.map(t => ({
+      id: t.id || newItemId(),
+      name: t.name || "",
+      capacity: t.capacity || "",
+      rob: t.rob || "",
+      role: {production: !!(t.role && t.role.production), consumption: !!(t.role && t.role.consumption)},
+      hypermist: !!t.hypermist,
+      alarmThreshold: t.alarmThreshold || "",
+      target: t.target || ""
+    })) : [defaultFwTank("FW Tank 1"), defaultFwTank("FW Tank 2")];
+    const legs = (Array.isArray(src.legs) && src.legs.length) ? src.legs.map(l => ({
+      id: l.id || newItemId(),
+      label: l.label || "",
+      distance: l.distance || "",
+      speedOverride: l.speedOverride || ""
+    })) : [defaultFwLeg(""), defaultFwLeg("")];
+    function cleanSeq(seq, roleKey){
+      const out = (Array.isArray(seq) ? seq : []).filter(id => {
+        const t = tanks.find(x => x.id === id);
+        return t && t.role[roleKey];
+      });
+      tanks.forEach(t => { if(t.role[roleKey] && !out.includes(t.id)) out.push(t.id); });
+      return out;
+    }
+    return {
+      tanks,
+      unit: src.unit || "m³",
+      consPerDay: src.consPerDay || "", prodPerDay: src.prodPerDay || "",
+      legs,
+      genDate: src.genDate || "", genTime: src.genTime || "",
+      genZone: src.genZone || "UTC+0",
+      prodSequence: cleanSeq(src.prodSequence, "production"),
+      consSequence: cleanSeq(src.consSequence, "consumption")
+    };
+  }
   function loadState(){
     try{
       const raw = localStorage.getItem(STORE_KEY);
@@ -3045,6 +3217,7 @@
       state.robReferencePort = parsed.robReferencePort || "primary";
       state.etaSpeedRangePort = parsed.etaSpeedRangePort || "primary";
       state.reqSpeedPort = parsed.reqSpeedPort || "primary";
+      state.fwPlannerPort = parsed.fwPlannerPort || "primary";
       state.consumptionMode = parsed.consumptionMode === "region" ? "region" : "straight";
       state.robVisible = Object.assign({fuels:true, freshWater:true, lubeOils:true}, parsed.robVisible||{});
       const pc = parsed.consumption || {};
@@ -3055,6 +3228,7 @@
         units: Object.assign({fuels:"MT", lubeOils:"L"}, pc.units||{})
       };
       state.routeLegs = normalizeRouteLegs(parsed.routeLegs);
+      state.freshwaterPlanner = normalizeFreshwaterPlanner(parsed.freshwaterPlanner);
     }catch(e){}
   }
 
@@ -5345,12 +5519,599 @@
     updateBottomBar();
   }));
 
+  /* ---------------- Freshwater Planner ----------------
+     A fully separate tool from state.consumption.freshWater (see
+     defaultFreshwaterPlanner()/normalizeFreshwaterPlanner() far above) —
+     nothing here reads from or writes to that simple ship-wide FW line,
+     and nothing in the ETA/Consumption tabs reads from this. Reached only
+     via its own Home card / showFreshwater(). */
+
+  // Reuses the exact same independent-port-focus mechanism Required Speed
+  // already has (resolveFocusPort()/getReqFocusPort()) — just its own
+  // top-level state key (state.fwPlannerPort) so resolveFocusPort() (which
+  // only reads top-level state fields) works unmodified.
+  function getFwPlannerFocusPort(){ return resolveFocusPort("fwPlannerPort"); }
+  function fwUnit(){ return state.freshwaterPlanner.unit || "m³"; }
+
+  function fwAddTank(){
+    const n = state.freshwaterPlanner.tanks.length;
+    state.freshwaterPlanner.tanks.push(defaultFwTank("FW Tank "+(n+1)));
+    saveState();
+    renderFwPlanner();
+  }
+  function fwDeleteTank(id){
+    if(state.freshwaterPlanner.tanks.length <= 2) return; // keep at least 2, matching the default set
+    state.freshwaterPlanner.tanks = state.freshwaterPlanner.tanks.filter(t => t.id !== id);
+    state.freshwaterPlanner = normalizeFreshwaterPlanner(state.freshwaterPlanner); // drops the deleted tank from both sequences too
+    saveState();
+    renderFwPlanner();
+  }
+  function fwToggleRole(id, roleKey){
+    const t = state.freshwaterPlanner.tanks.find(x => x.id === id);
+    if(!t) return;
+    t.role[roleKey] = !t.role[roleKey];
+    state.freshwaterPlanner = normalizeFreshwaterPlanner(state.freshwaterPlanner); // keeps prodSequence/consSequence in sync with this toggle
+    saveState();
+    renderFwPlanner();
+  }
+  function fwToggleHypermist(id){
+    const t = state.freshwaterPlanner.tanks.find(x => x.id === id);
+    if(!t) return;
+    t.hypermist = !t.hypermist;
+    saveState();
+    renderFwPlanner();
+  }
+  function fwMoveInSequence(seqKey, id, dir){
+    const seq = state.freshwaterPlanner[seqKey];
+    const i = seq.indexOf(id), j = i+dir;
+    if(i<0 || j<0 || j>=seq.length) return;
+    const tmp = seq[i]; seq[i] = seq[j]; seq[j] = tmp;
+    saveState();
+    renderFwSequences();
+    renderFwResults();
+  }
+
+  // The core calculation — event-driven, not fixed daily steps: production
+  // and consumption are each a single constant daily rate, so every tank's
+  // level changes at a constant rate for as long as it's the "active" tank
+  // in its sequence. That means the whole voyage decomposes into a short
+  // list of exact events (a tank filling, a tank emptying, the combined
+  // total reaching target, or arrival) computed by division — not
+  // thousands of discretized steps — while still fully respecting
+  // sequencing/overflow, since the loop advances real tank levels at each
+  // exact event rather than assuming one combined pool.
+  // Direct mirror of regionLegHours()/regionTotalHours() (Consumption's By
+  // Region mode) — sums this tool's own leg list, speed falling back to
+  // state.speed the same way. Legs with no distance yet just contribute 0.
+  function fwLegHours(leg){
+    const distance = parseFloat(leg.distance);
+    const speed = parseFloat(leg.speedOverride) || parseFloat(state.speed);
+    if(!isFinite(distance) || distance<=0 || !isFinite(speed) || speed<=0) return null;
+    return distance/speed;
+  }
+  function fwLegTotalHours(){
+    let total = 0, any = false;
+    state.freshwaterPlanner.legs.forEach(leg => {
+      const h = fwLegHours(leg);
+      if(h!=null){ total += h; any = true; }
+    });
+    return any ? total : null;
+  }
+
+  function simulateFwPlanner(){
+    const fw = state.freshwaterPlanner;
+    const dep = departureInstant();
+    const totalHours = fwLegTotalHours();
+    const prodRate = parseFloat(fw.prodPerDay), consRate = parseFloat(fw.consPerDay);
+    if(!dep || totalHours==null || !isFinite(prodRate) || !isFinite(consRate) || !fw.genDate || !fw.genTime){
+      return {status:"incomplete"};
+    }
+    const genStartDT = DT.fromISO(fw.genDate+"T"+fw.genTime, {zone: fw.genZone});
+    if(!genStartDT.isValid) return {status:"incomplete"};
+    // Generator start, placed on the same 0..totalHours timeline as arrival
+    // (t=0 is the ship's own departure instant — same anchor Consumption's
+    // By Region mode already uses for its own leg-based totals). Can land
+    // before departure (clamped to 0 — generator was already running) or
+    // after arrival (clamped to totalHours — production never turns on
+    // during this passage); both are flagged for the results, not errors.
+    const genStartRaw = genStartDT.toUTC().diff(dep.instant.toUTC(), "hours").hours;
+    // Rounded to the nearest second — the DT engine's own toFormat() reads
+    // whole minutes via getUTCMinutes() (truncating, not rounding), so a
+    // value landing a fraction of a millisecond under a clean boundary
+    // (routine after a floating-point diff/division chain) would otherwise
+    // display one whole minute early.
+    const roundHrs = h => Math.round(h*3600)/3600;
+    const genStartHours = clamp(roundHrs(genStartRaw), 0, totalHours);
+    const startedBeforeDeparture = genStartRaw < -1e-9;
+    const neverStarts = genStartRaw > totalHours + 1e-9;
+
+    const tanks = fw.tanks;
+    const initLevels = {}, caps = {}, targets = {};
+    tanks.forEach(t => {
+      const rob = parseFloat(t.rob)||0;
+      initLevels[t.id] = rob; caps[t.id] = parseFloat(t.capacity); targets[t.id] = parseFloat(t.target);
+    });
+
+    const prodSeq = fw.prodSequence.slice(), consSeq = fw.consSequence.slice();
+    const prodPerHour = prodRate/24, consPerHour = consRate/24;
+    // The generator's single reported stop time is driven by the LAST tank
+    // in the production sequence — see simulateWithStop()/the solve below
+    // for why that has to be SOLVED FOR (arrival-correct), not just
+    // detected the moment this tank's level first crosses its target.
+    const lastProdId = prodSeq.length ? prodSeq[prodSeq.length-1] : null;
+    const hasFinalTarget = lastProdId!=null && isFinite(targets[lastProdId]);
+
+    // Runs the whole voyage for a given candidate global stop time S:
+    // production runs from genStartHours to S (then stops everywhere),
+    // consumption runs the entire voyage per consSequence regardless of S.
+    // Same event-driven approach as the rest of this simulation — jump to
+    // whichever event (arrival / genStart / stop / a tank filling or
+    // emptying) comes soonest, computed by division, not fixed steps.
+    function simulateWithStop(S){
+      const levels = Object.assign({}, initLevels), minSeen = Object.assign({}, initLevels);
+      const capBeforeTarget = {};
+      // Chronological log of every switch-over — the whole point of this
+      // tool for you is seeing WHEN to move the generator from tank to
+      // tank (and when consumption itself moves on), not just the final
+      // stop time, so every meaningful event records its own instant and
+      // a full snapshot of every tank's level at that moment.
+      const events = [];
+      const snap = () => Object.assign({}, levels);
+      if(consSeq.length) events.push({hours:0, kind:"consStart", tankId:consSeq[0], levels:snap()});
+      let prodStartLogged = false;
+      if(prodSeq.length && genStartHours <= 1e-9){
+        events.push({hours:0, kind:"prodStart", tankId:prodSeq[0], levels:snap()});
+        prodStartLogged = true;
+      }
+      let t = 0, prodIdx = 0, consIdx = 0, guard = 0;
+      while(t < totalHours - 1e-9 && guard < 5000){
+        guard++;
+        const beforeGenStart = t < genStartHours - 1e-9;
+        const beforeStop = t < S - 1e-9;
+        const producing = !beforeGenStart && beforeStop && prodIdx < prodSeq.length;
+        const consuming = consIdx < consSeq.length;
+        if(!producing && !consuming && !beforeGenStart && !beforeStop) break; // nothing left changing before arrival
+
+        const prodTankId = producing ? prodSeq[prodIdx] : null;
+        const consTankId = consuming ? consSeq[consIdx] : null;
+        const sameTank = producing && consuming && prodTankId===consTankId;
+        const isLastProdTank = prodTankId===lastProdId;
+
+        const candidates = [{type:"arrival", time: totalHours - t}];
+        if(beforeGenStart) candidates.push({type:"genStartBoundary", time: genStartHours - t});
+        else if(beforeStop && S < totalHours - 1e-9) candidates.push({type:"stopBoundary", time: S - t});
+        let viaTarget = false;
+        if(producing){
+          const cap = caps[prodTankId];
+          // The LAST tank's target is no longer a fill ceiling — it's the
+          // arrival-time goal the outer solve is searching for, so this
+          // tank only ceilings at its own physical capacity. Every other
+          // tank keeps today's min(capacity, target) ceiling.
+          const tgt = isLastProdTank ? NaN : targets[prodTankId];
+          const ceiling = isFinite(cap) && isFinite(tgt) ? Math.min(cap, tgt) : (isFinite(cap) ? cap : (isFinite(tgt) ? tgt : null));
+          const netRate = prodPerHour - (sameTank?consPerHour:0);
+          if(ceiling!=null && netRate>0){
+            candidates.push({type:"prodCeiling", time: Math.max(0, (ceiling-levels[prodTankId])/netRate)});
+            viaTarget = isFinite(tgt) && (!isFinite(cap) || tgt<=cap);
+          }
+        }
+        if(consuming){
+          const netRate = consPerHour - (sameTank?prodPerHour:0);
+          if(netRate>0) candidates.push({type:"empty", time: Math.max(0, levels[consTankId]/netRate)});
+        }
+        candidates.sort((a,b) => a.time-b.time);
+        const dt = candidates[0].time, type = candidates[0].type;
+
+        if(producing){ levels[prodTankId] += prodPerHour*dt; minSeen[prodTankId] = Math.min(minSeen[prodTankId], levels[prodTankId]); }
+        if(consuming){ levels[consTankId] -= consPerHour*dt; minSeen[consTankId] = Math.min(minSeen[consTankId], levels[consTankId]); }
+        t += dt;
+
+        if(type==="arrival"){ events.push({hours:t, kind:"arrival", levels:snap()}); break; }
+        if(type==="genStartBoundary"){
+          if(!prodStartLogged && prodSeq.length){
+            events.push({hours:t, kind:"prodStart", tankId:prodSeq[prodIdx], levels:snap()});
+            prodStartLogged = true;
+          }
+          continue;
+        }
+        if(type==="stopBoundary"){
+          events.push({hours:t, kind:"prodStop", tankId:prodTankId, levels:snap()});
+          continue;
+        }
+        if(type==="prodCeiling"){
+          const fromId = prodTankId;
+          const reason = (!isLastProdTank && viaTarget) ? "target" : "capacity";
+          if(!isLastProdTank && !viaTarget && isFinite(targets[prodTankId])) capBeforeTarget[prodTankId] = true;
+          prodIdx++;
+          const toId = prodIdx < prodSeq.length ? prodSeq[prodIdx] : null;
+          events.push({hours:t, kind:"prodSwitch", fromId, toId, reason, levels:snap()});
+          continue;
+        }
+        if(type==="empty"){
+          const fromId = consTankId;
+          consIdx++;
+          const toId = consIdx < consSeq.length ? consSeq[consIdx] : null;
+          events.push({hours:t, kind:"consSwitch", fromId, toId, levels:snap()});
+          continue;
+        }
+      }
+      return {levels, minSeen, capBeforeTarget, events};
+    }
+
+    let status, stopHours = null, shortfall = null, finalRes;
+
+    if(!prodSeq.length){
+      status = "no-production";
+      finalRes = simulateWithStop(totalHours);
+    } else if(!hasFinalTarget){
+      status = "no-target";
+      finalRes = simulateWithStop(totalHours); // no goal defined — production just runs the rest of the voyage
+    } else {
+      const target = targets[lastProdId];
+      // Zero production time — if the last tank is already at/above its
+      // target even after whatever consumption happens before genStartHours,
+      // the generator genuinely never needs to run.
+      const atMin = simulateWithStop(genStartHours);
+      if(atMin.levels[lastProdId] >= target - 1e-9){
+        status = "surplus";
+        stopHours = genStartHours;
+        finalRes = atMin;
+      } else {
+        // Maximum production time — if the last tank still can't reach its
+        // target even running the generator the entire rest of the voyage,
+        // no stop time exists.
+        const atMax = simulateWithStop(totalHours);
+        if(atMax.levels[lastProdId] < target - 1e-9){
+          status = "insufficient";
+          shortfall = target - atMax.levels[lastProdId];
+          finalRes = atMax;
+        } else {
+          // Binary search: the last tank's arrival level is monotonic
+          // non-decreasing in the stop time S (more production can only
+          // raise it, and stopping later always leaves less time for
+          // anything to drain it back down before arrival), so this
+          // reliably converges on the S that lands it exactly on target —
+          // not just the S where it first touches target mid-voyage.
+          let lo = genStartHours, hi = totalHours;
+          for(let i=0;i<60;i++){
+            const mid = (lo+hi)/2;
+            const lvl = simulateWithStop(mid).levels[lastProdId];
+            if(lvl < target - 1e-9) lo = mid; else hi = mid;
+          }
+          // Rounded to the nearest second — see roundHrs()'s comment above;
+          // bisection converges arbitrarily close but not bit-exact, and
+          // re-simulating at the rounded instant keeps the displayed tank
+          // levels consistent with the displayed stop time.
+          hi = roundHrs(hi);
+          status = "ok";
+          stopHours = hi;
+          finalRes = simulateWithStop(hi);
+        }
+      }
+    }
+
+    // Hypermist alarm — minSeen tracks each tank's true minimum level
+    // across the ENTIRE simulation (both the production-running phase and
+    // the consumption-only phase after the stop point), not just its
+    // start/end value, so a tank that dips low mid-voyage before later
+    // being topped back up is still caught correctly.
+    const hypermistWarnings = [];
+    tanks.forEach(t => {
+      if(!t.hypermist) return;
+      const threshold = parseFloat(t.alarmThreshold);
+      if(!isFinite(threshold)) return;
+      if(finalRes.minSeen[t.id] < threshold) hypermistWarnings.push({name: t.name||"Tank", minLevel: finalRes.minSeen[t.id], threshold});
+    });
+
+    return {status, stopHours, totalHours, levels: finalRes.levels, targets, capBeforeTarget: finalRes.capBeforeTarget, shortfall,
+            genStartHours, startedBeforeDeparture, neverStarts, dep, hypermistWarnings, events: finalRes.events};
+  }
+
+  function fwPortSelectHTML(){
+    const primaryZI = getZoneInfo(state.arr);
+    let html = '<option value="primary">Primary — '+escHtml(primaryZI?primaryZI.label:"arrival not set")+'</option>';
+    state.altArrivals.forEach((a,i) => {
+      const zi = getZoneInfo(a.arr);
+      html += '<option value="'+a.id+'">Alt '+(i+1)+' — '+escHtml(zi?zi.label:"arrival not set")+'</option>';
+    });
+    return html;
+  }
+
+  // Voyage legs — mirrors renderRouteLegs() (Consumption's By Region mode,
+  // index.html ~4727) row-for-row, including reusing its own .route-leg/
+  // .route-leg-head/.route-leg-ordinal CSS (those classes aren't scoped to
+  // #routeLegsList, so no new styling is needed here).
+  const fwLegsListEl = document.getElementById("fwLegsList");
+  function renderFwLegs(){
+    fwLegsListEl.innerHTML = "";
+    state.freshwaterPlanner.legs.forEach((leg, i) => {
+      const row = document.createElement("div");
+      row.className = "route-leg";
+      row.innerHTML =
+        '<div class="route-leg-head">'+
+          '<span class="route-leg-ordinal"></span>'+
+          '<button type="button" class="consum-del" aria-label="Remove leg">'+TRASH_SVG+'</button>'+
+        '</div>'+
+        '<div class="field"><label>Leg name (optional)</label><input type="text" class="fw-leg-label" placeholder="e.g. Non-ECA transit / ECA zone"></div>'+
+        '<div class="field-row" style="margin-top:10px;">'+
+          '<div class="field"><label>Distance (nm)</label><input type="number" class="fw-leg-distance" inputmode="decimal" min="0" step="any" placeholder="0.0"></div>'+
+          '<div class="field"><label>Speed override (kn)</label><input type="number" class="fw-leg-speed" inputmode="decimal" min="0" step="any" placeholder="'+(parseFloat(state.speed)||0).toFixed(1)+'"></div>'+
+        '</div>'+
+        '<p class="req-note" style="margin-top:6px;"></p>';
+      row.querySelector(".route-leg-ordinal").textContent = ordinal(i+1)+" Leg";
+      const labelEl = row.querySelector(".fw-leg-label");
+      const distEl = row.querySelector(".fw-leg-distance");
+      const speedEl = row.querySelector(".fw-leg-speed");
+      labelEl.value = leg.label;
+      distEl.value = leg.distance;
+      speedEl.value = leg.speedOverride;
+      labelEl.addEventListener("input", () => { leg.label = labelEl.value; saveState(); });
+      distEl.addEventListener("input", () => {
+        const maxDist = parseFloat(getFwPlannerFocusPort().distance);
+        const val = parseFloat(distEl.value);
+        if(isFinite(maxDist) && maxDist>0 && isFinite(val) && val>maxDist){
+          distEl.value = maxDist;
+        }
+        leg.distance = distEl.value;
+        saveState();
+        renderFwResults();
+        updateFwLegTotalNote();
+      });
+      speedEl.addEventListener("input", () => { leg.speedOverride = speedEl.value; saveState(); renderFwResults(); });
+      row.querySelector(".consum-del").addEventListener("click", () => {
+        if(state.freshwaterPlanner.legs.length <= 1) return; // keep at least 1 leg
+        state.freshwaterPlanner.legs = state.freshwaterPlanner.legs.filter(l => l.id !== leg.id);
+        saveState();
+        rebuildFwForLegChange();
+      });
+      fwLegsListEl.appendChild(row);
+    });
+    updateFwLegDistanceCaps();
+  }
+  // The leg COUNT changed (add/remove) — legs themselves need reconstructing.
+  // A plain edit to one leg's own fields never calls this (see renderFwLegs()).
+  function rebuildFwForLegChange(){
+    renderFwLegs();
+    renderFwResults();
+    updateFwLegTotalNote();
+  }
+  // Re-applies the "can't exceed the reference port's own distance" cap/hint
+  // to every currently-rendered leg row — mirrors updateLegDistanceCaps()
+  // (index.html ~4763). Re-run whenever legs are rendered/changed, or the
+  // reference port selection changes.
+  function updateFwLegDistanceCaps(){
+    const focus = getFwPlannerFocusPort();
+    const maxDist = parseFloat(focus.distance);
+    document.querySelectorAll("#fwLegsList .route-leg").forEach(row => {
+      const distEl = row.querySelector(".fw-leg-distance");
+      const hintEl = row.querySelector(".req-note");
+      if(isFinite(maxDist) && maxDist>0){
+        distEl.max = maxDist;
+        hintEl.hidden = false;
+        hintEl.textContent = "Max "+maxDist.toLocaleString()+" nm — "+escHtml(focus.label)+" (reference)";
+      } else {
+        distEl.removeAttribute("max");
+        hintEl.hidden = true;
+      }
+    });
+  }
+  function updateFwLegTotalNote(){
+    updateFwLegDistanceCaps();
+    const note = document.getElementById("fwLegTotalNote");
+    let total = 0, any = false;
+    state.freshwaterPlanner.legs.forEach(leg => { const d = parseFloat(leg.distance); if(isFinite(d)){ total += d; any = true; } });
+    if(!any){ note.hidden = true; return; }
+    note.hidden = false;
+    note.textContent = "Legs total: "+total.toLocaleString(undefined,{maximumFractionDigits:1})+" nm";
+  }
+
+  function fwTankCardHTML(t){
+    const canDelete = state.freshwaterPlanner.tanks.length > 2;
+    const unit = escHtml(fwUnit());
+    return '<div class="card" style="margin-bottom:10px;" data-tank-id="'+t.id+'">'+
+      '<div class="field"><label>Tank name</label><input type="text" class="fw-tank-name" placeholder="e.g. FW Tank 1" value="'+escHtml(t.name)+'"></div>'+
+      '<div class="field-row" style="margin-top:10px;">'+
+        '<div class="field"><label>Capacity ('+unit+')</label><input type="number" class="fw-tank-capacity" inputmode="decimal" min="0" step="any" placeholder="0.0" value="'+escHtml(t.capacity)+'"></div>'+
+        '<div class="field"><label>Current ROB ('+unit+')</label><input type="number" class="fw-tank-rob" inputmode="decimal" min="0" step="any" placeholder="0.0" value="'+escHtml(t.rob)+'"></div>'+
+      '</div>'+
+      '<div class="field" style="margin-top:10px;"><label>Target ROB at arrival ('+unit+')</label><input type="number" class="fw-tank-target" inputmode="decimal" min="0" step="any" placeholder="0.0" value="'+escHtml(t.target)+'"></div>'+
+      '<div class="rob-vis-toggles" role="group" aria-label="Tank role" style="margin-top:10px;">'+
+        '<button type="button" class="rob-vis-chip fw-role-chip" data-role="production" aria-pressed="'+(t.role.production?"true":"false")+'"><span class="rob-vis-dot"></span>Production</button>'+
+        '<button type="button" class="rob-vis-chip fw-role-chip" data-role="consumption" aria-pressed="'+(t.role.consumption?"true":"false")+'"><span class="rob-vis-dot"></span>Consumption</button>'+
+        '<button type="button" class="rob-vis-chip fw-hypermist-chip" aria-pressed="'+(t.hypermist?"true":"false")+'"><span class="rob-vis-dot"></span>Hypermist Reserve</button>'+
+      '</div>'+
+      (t.hypermist ? '<div class="field" style="margin-top:10px;"><label>Low-level alarm ('+unit+')</label><input type="number" class="fw-tank-alarm" inputmode="decimal" min="0" step="any" placeholder="0.0" value="'+escHtml(t.alarmThreshold)+'"></div>' : '')+
+      (canDelete ? '<button type="button" class="link-btn link-btn-danger fw-tank-delete" style="margin-top:10px;">Delete tank</button>' : '')+
+    '</div>';
+  }
+
+  function fwSeqRowHTML(tank, idx, total, seqKey){
+    return '<div class="fw-seq-row" data-tank-id="'+tank.id+'" data-seq="'+seqKey+'">'+
+      '<span>'+escHtml(tank.name||"(unnamed tank)")+'</span>'+
+      '<span class="fw-seq-btns">'+
+        '<button type="button" class="icon-btn fw-seq-btn fw-seq-up" aria-label="Move up"'+(idx===0?' disabled':'')+'><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"></path><path d="m5 12 7-7 7 7"></path></svg></button>'+
+        '<button type="button" class="icon-btn fw-seq-btn fw-seq-down" aria-label="Move down"'+(idx===total-1?' disabled':'')+'><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"></path><path d="m19 12-7 7-7-7"></path></svg></button>'+
+      '</span>'+
+    '</div>';
+  }
+
+  function renderFwTanks(){
+    const container = document.getElementById("fwTanksList");
+    container.innerHTML = state.freshwaterPlanner.tanks.map(fwTankCardHTML).join("");
+    container.querySelectorAll("[data-tank-id]").forEach(card => {
+      const id = card.dataset.tankId;
+      const tank = state.freshwaterPlanner.tanks.find(t => t.id===id);
+      if(!tank) return;
+      const nameEl = card.querySelector(".fw-tank-name");
+      nameEl.addEventListener("input", () => { tank.name = nameEl.value; saveState(); renderFwSequences(); renderFwResults(); });
+      const capEl = card.querySelector(".fw-tank-capacity");
+      capEl.addEventListener("input", () => { tank.capacity = capEl.value; saveState(); renderFwResults(); });
+      const robEl = card.querySelector(".fw-tank-rob");
+      robEl.addEventListener("input", () => { tank.rob = robEl.value; saveState(); renderFwResults(); });
+      const targetEl = card.querySelector(".fw-tank-target");
+      targetEl.addEventListener("input", () => { tank.target = targetEl.value; saveState(); renderFwResults(); });
+      card.querySelectorAll(".fw-role-chip").forEach(chip => {
+        chip.addEventListener("click", () => fwToggleRole(id, chip.dataset.role));
+      });
+      const hyperChip = card.querySelector(".fw-hypermist-chip");
+      if(hyperChip) hyperChip.addEventListener("click", () => fwToggleHypermist(id));
+      const alarmEl = card.querySelector(".fw-tank-alarm");
+      if(alarmEl) alarmEl.addEventListener("input", () => { tank.alarmThreshold = alarmEl.value; saveState(); renderFwResults(); });
+      const delBtn = card.querySelector(".fw-tank-delete");
+      if(delBtn) delBtn.addEventListener("click", () => fwDeleteTank(id));
+    });
+  }
+
+  function renderFwSequences(){
+    function buildList(seqKey){
+      const ids = state.freshwaterPlanner[seqKey];
+      if(!ids.length) return '<p class="result-empty">No tanks flagged for this role yet.</p>';
+      return ids.map((id,i) => {
+        const tank = state.freshwaterPlanner.tanks.find(t => t.id===id);
+        return tank ? fwSeqRowHTML(tank, i, ids.length, seqKey) : "";
+      }).join("");
+    }
+    document.getElementById("fwProdSeqList").innerHTML = buildList("prodSequence");
+    document.getElementById("fwConsSeqList").innerHTML = buildList("consSequence");
+    document.querySelectorAll(".fw-seq-row").forEach(row => {
+      const id = row.dataset.tankId, seqKey = row.dataset.seq;
+      const upBtn = row.querySelector(".fw-seq-up"), downBtn = row.querySelector(".fw-seq-down");
+      if(upBtn) upBtn.addEventListener("click", () => fwMoveInSequence(seqKey, id, -1));
+      if(downBtn) downBtn.addEventListener("click", () => fwMoveInSequence(seqKey, id, 1));
+    });
+  }
+
+  function renderFwResults(){
+    const el = document.getElementById("fwResultsBody");
+    const card = document.getElementById("fwResultsCard");
+    const sim = simulateFwPlanner();
+    const unit = escHtml(fwUnit());
+    if(sim.status==="incomplete"){
+      el.innerHTML = '<p class="result-empty">Enter voyage legs, tank ROB/capacity/target, avg consumption &amp; production per day, and a generator start date &amp; time to see the stop time.</p>';
+      card.classList.remove("has-value");
+      return;
+    }
+    card.classList.add("has-value");
+    let html = "";
+    if(sim.startedBeforeDeparture){
+      html += '<p class="req-note" style="margin-top:0;">Generator start entered is before departure &mdash; treated as already running from the start of the voyage.</p>';
+    }
+    const lastProdId = state.freshwaterPlanner.prodSequence.length ? state.freshwaterPlanner.prodSequence[state.freshwaterPlanner.prodSequence.length-1] : null;
+    const lastProdTank = lastProdId ? state.freshwaterPlanner.tanks.find(x => x.id===lastProdId) : null;
+    if(sim.status==="no-production"){
+      html += '<p class="req-note warn">No tank is flagged Production &mdash; there&rsquo;s nothing for the generator to stop. Showing tank levels at arrival below.</p>';
+    } else if(sim.status==="no-target"){
+      html += '<p class="req-note warn">'+escHtml(lastProdTank?lastProdTank.name||"The last tank":"The last tank")+' in the Production fill order has no target set, so there&rsquo;s no defined stop time &mdash; production is shown running the whole passage from your generator start time.</p>';
+    } else if(sim.status==="insufficient"){
+      html += '<p class="req-note danger">'+escHtml(lastProdTank?(lastProdTank.name||"Target"):"Target")+'&rsquo;s target isn&rsquo;t reachable even running the generator the rest of the passage &mdash; short by '+fmtQty(sim.shortfall)+' '+unit+'.</p>';
+      if(sim.neverStarts){
+        html += '<p class="req-note warn">Generator start entered is at or after arrival &mdash; production never runs during this passage.</p>';
+      }
+    } else if(sim.status==="surplus"){
+      html += '<p class="req-note" style="margin-top:0;">Already at/above target &mdash; the generator doesn&rsquo;t need to run this passage.</p>';
+    }
+    // The full chronological plan — every switch-over the officer actually
+    // needs to act on, in UTC, each with a snapshot of every tank's level
+    // at that instant. Built straight from the same event-driven simulation
+    // that decides the stop time — not a second, separate calculation.
+    const fwTanks = state.freshwaterPlanner.tanks;
+    const tankName = id => { const t = fwTanks.find(x => x.id===id); return t ? (t.name||"Tank") : "Tank"; };
+    const levelsLineHTML = lv => fwTanks.map(t => escHtml(t.name||"Tank")+': '+(lv[t.id]!=null?fmtQty(lv[t.id]):"—")+' '+unit).join(' &middot; ');
+    const eventNoteHTML = ev => {
+      if(ev.kind==="consStart") return 'Consumption begins &mdash; drawing from <b>'+escHtml(tankName(ev.tankId))+'</b>';
+      if(ev.kind==="prodStart") return 'Generator starts &mdash; producing into <b>'+escHtml(tankName(ev.tankId))+'</b>';
+      if(ev.kind==="prodStop") return 'Generator stops producing into <b>'+escHtml(tankName(ev.tankId))+'</b>';
+      if(ev.kind==="prodSwitch"){
+        const why = ev.reason==="target" ? "reaches its target" : "reaches capacity";
+        return '<b>'+escHtml(tankName(ev.fromId))+'</b> '+why+(ev.toId ? ' &mdash; production switches to <b>'+escHtml(tankName(ev.toId))+'</b>' : ' &mdash; no further tanks in the Production fill order');
+      }
+      if(ev.kind==="consSwitch"){
+        return '<b>'+escHtml(tankName(ev.fromId))+'</b> runs dry'+(ev.toId ? ' &mdash; consumption switches to <b>'+escHtml(tankName(ev.toId))+'</b>' : ' &mdash; no further tanks in the Consumption draw order');
+      }
+      if(ev.kind==="arrival") return 'Arrival';
+      return '';
+    };
+    if((sim.events||[]).length){
+      html += '<div class="fw-timeline">';
+      sim.events.forEach(ev => {
+        const at = sim.dep.instant.toUTC().plus({hours: ev.hours});
+        html += '<div class="route-leg">'+
+          '<div class="text-brass" style="font-weight:600;">'+at.toFormat("dd LLL yyyy, HH:mm")+' UTC</div>'+
+          '<div style="margin-top:2px;">'+eventNoteHTML(ev)+'</div>'+
+          '<div class="req-note" style="margin-top:4px;">'+levelsLineHTML(ev.levels)+'</div>'+
+        '</div>';
+      });
+      html += '</div>';
+    }
+    sim.hypermistWarnings.forEach(w => {
+      html += '<p class="req-note danger" style="margin-top:8px;">&#9888; '+escHtml(w.name)+' projected to drop to '+fmtQty(w.minLevel)+' '+unit+' &mdash; below its '+fmtQty(w.threshold)+' '+unit+' alarm threshold.</p>';
+    });
+    html += '<div class="stat-grid" style="margin-top:10px; flex-wrap:wrap;">';
+    state.freshwaterPlanner.tanks.forEach(t => {
+      const level = sim.levels[t.id];
+      const cap = parseFloat(t.capacity);
+      const threshold = parseFloat(t.alarmThreshold);
+      const target = parseFloat(t.target);
+      let status = "ok";
+      if(level!=null){
+        if(level<=0) status = "danger";
+        else if(t.hypermist && isFinite(threshold) && level<threshold) status = "danger";
+        else if(isFinite(target) && level < target - 1e-9) status = "warn";
+        else if(isFinite(cap) && cap>0 && level/cap<0.15) status = "warn";
+      }
+      html += '<div class="stat-tile"><div class="k">'+escHtml(t.name||"Tank")+'</div><div class="v">'+(level!=null?fmtQty(level):"—")+' '+unit+'</div>'+
+        '<span class="consum-chip '+status+'" style="margin-top:4px; display:inline-block;">'+STATUS_LABEL[status]+'</span></div>';
+    });
+    html += '</div>';
+    el.innerHTML = html;
+  }
+
+  function renderFwPlanner(){
+    fillUnitSelect(document.getElementById("fwPlannerUnitSelect"), state.freshwaterPlanner.unit);
+    const portSelect = document.getElementById("fwPortSelect");
+    portSelect.innerHTML = fwPortSelectHTML();
+    portSelect.value = state.fwPlannerPort;
+    fillOffsetSelect(document.getElementById("fwGenZone"), false, state.freshwaterPlanner.genZone);
+    document.getElementById("fwGenDate").value = state.freshwaterPlanner.genDate;
+    document.getElementById("fwGenTime").value = state.freshwaterPlanner.genTime;
+    document.getElementById("fwConsPerDay").value = state.freshwaterPlanner.consPerDay;
+    document.getElementById("fwProdPerDay").value = state.freshwaterPlanner.prodPerDay;
+    renderFwLegs();
+    updateFwLegTotalNote();
+    renderFwTanks();
+    renderFwSequences();
+    renderFwResults();
+  }
+
+  document.getElementById("fwPlannerUnitSelect").addEventListener("change", (e) => {
+    state.freshwaterPlanner.unit = e.target.value;
+    saveState();
+    renderFwPlanner(); // unit affects every displayed label/value on this view
+  });
+  document.getElementById("fwPortSelect").addEventListener("change", (e) => {
+    state.fwPlannerPort = e.target.value;
+    saveState();
+    updateFwLegTotalNote(); // reference port change moves the max-distance hint, not the simulation
+  });
+  document.getElementById("fwAddLegBtn").addEventListener("click", () => {
+    state.freshwaterPlanner.legs.push(defaultFwLeg(""));
+    saveState();
+    rebuildFwForLegChange();
+  });
+  document.getElementById("fwGenDate").addEventListener("input", (e) => { state.freshwaterPlanner.genDate = e.target.value; saveState(); renderFwResults(); });
+  document.getElementById("fwGenTime").addEventListener("input", (e) => { state.freshwaterPlanner.genTime = e.target.value; saveState(); renderFwResults(); });
+  document.getElementById("fwGenZone").addEventListener("change", (e) => { state.freshwaterPlanner.genZone = e.target.value; saveState(); renderFwResults(); });
+  document.getElementById("fwConsPerDay").addEventListener("input", (e) => { state.freshwaterPlanner.consPerDay = e.target.value; saveState(); renderFwResults(); });
+  document.getElementById("fwProdPerDay").addEventListener("input", (e) => { state.freshwaterPlanner.prodPerDay = e.target.value; saveState(); renderFwResults(); });
+  document.getElementById("fwAddTankBtn").addEventListener("click", fwAddTank);
+
   /* ---------------- Home screen + sidebar ---------------- */
   const APP_VERSION = "1.0.0";
   const homeView = document.getElementById("homeView");
   const appView = document.getElementById("appView");
   const paywallView = document.getElementById("paywallView");
   const redeemView = document.getElementById("redeemView");
+  const freshwaterView = document.getElementById("freshwaterView");
   const bottomBarWrap = document.getElementById("bottomBarWrap");
   document.getElementById("homeFooter").textContent =
     "v"+APP_VERSION+" · ETA and Consumption Calculator for deck officers";
@@ -5362,30 +6123,36 @@
   // so it's toggled here via inline style rather than the [hidden] attribute
   // convention used elsewhere, to avoid fighting that existing cascade.
   function showHome(){
-    appView.hidden = true; paywallView.hidden = true; redeemView.hidden = true;
+    appView.hidden = true; paywallView.hidden = true; redeemView.hidden = true; freshwaterView.hidden = true;
     homeView.hidden = false;
     bottomBarWrap.style.display = "none";
   }
   function showAppView(){
-    homeView.hidden = true; paywallView.hidden = true; redeemView.hidden = true;
+    homeView.hidden = true; paywallView.hidden = true; redeemView.hidden = true; freshwaterView.hidden = true;
     appView.hidden = false;
     bottomBarWrap.style.display = "";
     updateBottomBar();
   }
-  // Paywall/Redeem — same full-screen-view pattern as Home/App. "Back" on
-  // both always returns to Home (kept simple rather than tracking exactly
-  // where the user tapped in from).
+  // Paywall/Redeem/Freshwater Planner — same full-screen-view pattern as
+  // Home/App. "Back" on each always returns to Home (kept simple rather
+  // than tracking exactly where the user tapped in from).
   function showPaywall(){
-    homeView.hidden = true; appView.hidden = true; redeemView.hidden = true;
+    homeView.hidden = true; appView.hidden = true; redeemView.hidden = true; freshwaterView.hidden = true;
     paywallView.hidden = false;
     bottomBarWrap.style.display = "none";
     renderPaywallPrice();
   }
   function showRedeem(){
-    homeView.hidden = true; appView.hidden = true; paywallView.hidden = true;
+    homeView.hidden = true; appView.hidden = true; paywallView.hidden = true; freshwaterView.hidden = true;
     redeemView.hidden = false;
     bottomBarWrap.style.display = "none";
     resetRedeemForm();
+  }
+  function showFreshwater(){
+    homeView.hidden = true; appView.hidden = true; paywallView.hidden = true; redeemView.hidden = true;
+    freshwaterView.hidden = false;
+    bottomBarWrap.style.display = "none";
+    renderFwPlanner();
   }
   showHome();
 
@@ -5400,6 +6167,12 @@
     document.querySelector('.main-tab[data-tab="consumption"]').click();
     showAppView();
   });
+  document.getElementById("homeCardFreshwater").addEventListener("click", () => {
+    // PREMIUM: same Pro gate as Consumption Calculator (confirmed choice).
+    if(!isFeatureUnlocked()){ showPaywall(); return; }
+    showFreshwater();
+  });
+  document.getElementById("fwBackBtn").addEventListener("click", showHome);
 
   // Sidebar drawer — same fixed-overlay hidden/.open pattern as the History
   // sheet (openHistory/closeHistory below), just sliding in from the left.
@@ -5872,6 +6645,7 @@
 
   const consumptionTabBtn = document.querySelector('.main-tab[data-tab="consumption"]');
   const homeCardConsumptionEl = document.getElementById("homeCardConsumption");
+  const homeCardFreshwaterEl = document.getElementById("homeCardFreshwater");
   const downloadDesktopBtn = document.getElementById("downloadDesktopBtn");
   // PREMIUM (free-tier ETA tab gating): alternative arrival ports and
   // Required Speed — the third gated piece, the ETA-across-speed-range
@@ -5911,6 +6685,7 @@
 
     setLocked(consumptionTabBtn, !unlocked);
     setLocked(homeCardConsumptionEl, !unlocked);
+    setLocked(homeCardFreshwaterEl, !unlocked);
     // Desktop download is Premium-only — an active trial unlocks the
     // Consumption Calculator but deliberately NOT the desktop download.
     setLocked(downloadDesktopBtn, !premium);
