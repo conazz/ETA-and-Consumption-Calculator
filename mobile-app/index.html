@@ -2063,6 +2063,11 @@
       <h1>Freshwater Planner</h1>
     </div>
 
+    <div class="loc-tabs" style="margin-top:-10px;">
+      <button type="button" class="loc-tab" id="fwGotoEta">ETA tab</button>
+      <button type="button" class="loc-tab" id="fwGotoConsumption">Consumption tab</button>
+    </div>
+
     <p class="req-note" style="margin-top:-6px;">Plan generator-stop timing across multiple tanks so levels land on a target by arrival.</p>
 
     <!-- TANKS -->
@@ -2086,6 +2091,7 @@
         </div>
       </div>
       <p class="consum-legrates-heading" style="margin-top:14px;">Freshwater Generator Start</p>
+      <p class="req-note" id="fwGenDepartureNote" style="margin-top:-6px;"></p>
       <div class="row-gap">
         <div class="field-row">
           <div class="field">
@@ -5634,22 +5640,21 @@
 
     const prodSeq = fw.prodSequence.slice(), consSeq = fw.consSequence.slice();
     const prodPerHour = prodRate/24, consPerHour = consRate/24;
-    // The generator's single reported stop time is driven by the LAST tank
-    // in the production sequence — see simulateWithStop()/the solve below
-    // for why that has to be SOLVED FOR (arrival-correct), not just
-    // detected the moment this tank's level first crosses its target.
-    const lastProdId = prodSeq.length ? prodSeq[prodSeq.length-1] : null;
-    const hasFinalTarget = lastProdId!=null && isFinite(targets[lastProdId]);
 
-    // Runs the whole voyage for a given candidate global stop time S:
-    // production runs from genStartHours to S (then stops everywhere),
-    // consumption runs the entire voyage per consSequence regardless of S.
+    // Runs the whole voyage for a given per-tank schedule:
+    // - tankStopAt[i]: the deliberate time production leaves prodSeq[i] —
+    //   Infinity means "no deliberate cutover, just fill to physical
+    //   capacity and stop there" (today's plain behavior).
+    // - restartTankIdx/restartAt: the one tank (if any, identified by its
+    //   position in prodSeq) that pauses at its own capacity instead of
+    //   stopping for good, resuming later — see the outer solve for how
+    //   that gets decided.
     // Same event-driven approach as the rest of this simulation — jump to
-    // whichever event (arrival / genStart / stop / a tank filling or
-    // emptying) comes soonest, computed by division, not fixed steps.
-    function simulateWithStop(S){
+    // whichever event (arrival / genStart / a deliberate cutover / a tank
+    // filling or emptying / a restart) comes soonest, computed by
+    // division, not fixed steps.
+    function simulateSchedule(tankStopAt, restartTankIdx, restartAt){
       const levels = Object.assign({}, initLevels), minSeen = Object.assign({}, initLevels);
-      const capBeforeTarget = {};
       // Chronological log of every switch-over — the whole point of this
       // tool for you is seeing WHEN to move the generator from tank to
       // tank (and when consumption itself moves on), not just the final
@@ -5657,136 +5662,266 @@
       // a full snapshot of every tank's level at that moment.
       const events = [];
       const snap = () => Object.assign({}, levels);
+      const actualCutovers = new Array(prodSeq.length).fill(null);
       if(consSeq.length) events.push({hours:0, kind:"consStart", tankId:consSeq[0], levels:snap()});
       let prodStartLogged = false;
-      if(prodSeq.length && genStartHours <= 1e-9){
-        events.push({hours:0, kind:"prodStart", tankId:prodSeq[0], levels:snap()});
-        prodStartLogged = true;
-      }
+      let capHitTime = null; // first physical-capacity hit for whichever tank is currently active
+      let tankIdle = false; // current production tank paused at capacity, waiting for restartAt
+      let producedThisTurn = false; // true once this tank has actually received any production time
+      let consumedThisTurn = false; // true once this tank has actually been drawn from at all
       let t = 0, prodIdx = 0, consIdx = 0, guard = 0;
       while(t < totalHours - 1e-9 && guard < 5000){
         guard++;
         const beforeGenStart = t < genStartHours - 1e-9;
-        const beforeStop = t < S - 1e-9;
-        const producing = !beforeGenStart && beforeStop && prodIdx < prodSeq.length;
+        const stopAt = prodIdx < tankStopAt.length ? tankStopAt[prodIdx] : Infinity;
+        const isRestartTank = prodIdx === restartTankIdx;
+        const idleWaitingForRestart = tankIdle && isRestartTank && restartAt!=null && t < restartAt - 1e-9;
+        const producing = !beforeGenStart && !idleWaitingForRestart && prodIdx < prodSeq.length && (stopAt - t > 1e-9);
         const consuming = consIdx < consSeq.length;
-        if(!producing && !consuming && !beforeGenStart && !beforeStop) break; // nothing left changing before arrival
 
-        const prodTankId = producing ? prodSeq[prodIdx] : null;
+        // Logged the first time production is genuinely about to run, not
+        // just whenever t crosses genStartHours — a tank that gets skipped
+        // entirely (see the outer solve's "noProd already meets target"
+        // case) never actually causes the generator to start.
+        if(producing && !prodStartLogged){
+          events.push({hours:t, kind:"prodStart", tankId:prodSeq[prodIdx], levels:snap()});
+          prodStartLogged = true;
+        }
+
+        const prodTankId = prodIdx < prodSeq.length ? prodSeq[prodIdx] : null;
         const consTankId = consuming ? consSeq[consIdx] : null;
         const sameTank = producing && consuming && prodTankId===consTankId;
-        const isLastProdTank = prodTankId===lastProdId;
 
         const candidates = [{type:"arrival", time: totalHours - t}];
         if(beforeGenStart) candidates.push({type:"genStartBoundary", time: genStartHours - t});
-        else if(beforeStop && S < totalHours - 1e-9) candidates.push({type:"stopBoundary", time: S - t});
-        let viaTarget = false;
+        // Always present whenever this tank has a deliberate cutover —
+        // Math.max(0, ...) lets it fire immediately (zero-duration) for a
+        // tank being skipped outright, rather than needing t to already
+        // be strictly before it.
+        if(prodIdx < prodSeq.length && isFinite(stopAt)) candidates.push({type:"stopBoundary", time: Math.max(0, stopAt - t)});
+        if(idleWaitingForRestart) candidates.push({type:"restartBoundary", time: Math.max(0, restartAt - t)});
         if(producing){
           const cap = caps[prodTankId];
-          // The LAST tank's target is no longer a fill ceiling — it's the
-          // arrival-time goal the outer solve is searching for, so this
-          // tank only ceilings at its own physical capacity. Every other
-          // tank keeps today's min(capacity, target) ceiling.
-          const tgt = isLastProdTank ? NaN : targets[prodTankId];
-          const ceiling = isFinite(cap) && isFinite(tgt) ? Math.min(cap, tgt) : (isFinite(cap) ? cap : (isFinite(tgt) ? tgt : null));
           const netRate = prodPerHour - (sameTank?consPerHour:0);
-          if(ceiling!=null && netRate>0){
-            candidates.push({type:"prodCeiling", time: Math.max(0, (ceiling-levels[prodTankId])/netRate)});
-            viaTarget = isFinite(tgt) && (!isFinite(cap) || tgt<=cap);
-          }
+          if(isFinite(cap) && netRate>0) candidates.push({type:"prodCeiling", time: Math.max(0, (cap-levels[prodTankId])/netRate)});
         }
+        let consFloor = 0, consViaTarget = false;
         if(consuming){
           const netRate = consPerHour - (sameTank?prodPerHour:0);
-          if(netRate>0) candidates.push({type:"empty", time: Math.max(0, levels[consTankId]/netRate)});
+          // Symmetric to production's own ceiling: a tank with a target
+          // is only drawn down TO that target, not past it (falling back
+          // to fully empty when no target is set — today's behavior,
+          // unchanged) — consumption then moves on to the next tank in
+          // the draw order, the same way production moves on once a
+          // tank's own ceiling is reached.
+          consFloor = isFinite(targets[consTankId]) ? Math.max(0, targets[consTankId]) : 0;
+          consViaTarget = consFloor > 0;
+          if(netRate>0) candidates.push({type:"empty", time: Math.max(0, (levels[consTankId]-consFloor)/netRate)});
         }
         candidates.sort((a,b) => a.time-b.time);
         const dt = candidates[0].time, type = candidates[0].type;
 
-        if(producing){ levels[prodTankId] += prodPerHour*dt; minSeen[prodTankId] = Math.min(minSeen[prodTankId], levels[prodTankId]); }
-        if(consuming){ levels[consTankId] -= consPerHour*dt; minSeen[consTankId] = Math.min(minSeen[consTankId], levels[consTankId]); }
+        if(producing){ levels[prodTankId] += prodPerHour*dt; minSeen[prodTankId] = Math.min(minSeen[prodTankId], levels[prodTankId]); producedThisTurn = true; }
+        if(consuming){ levels[consTankId] -= consPerHour*dt; minSeen[consTankId] = Math.min(minSeen[consTankId], levels[consTankId]); consumedThisTurn = true; }
         t += dt;
 
         if(type==="arrival"){ events.push({hours:t, kind:"arrival", levels:snap()}); break; }
-        if(type==="genStartBoundary"){
-          if(!prodStartLogged && prodSeq.length){
-            events.push({hours:t, kind:"prodStart", tankId:prodSeq[prodIdx], levels:snap()});
-            prodStartLogged = true;
-          }
-          continue;
-        }
-        if(type==="stopBoundary"){
-          events.push({hours:t, kind:"prodStop", tankId:prodTankId, levels:snap()});
+        if(type==="genStartBoundary") continue;
+        if(type==="restartBoundary"){
+          tankIdle = false;
+          events.push({hours:t, kind:"prodResume", tankId:prodTankId, levels:snap()});
           continue;
         }
         if(type==="prodCeiling"){
+          // This tank is also being drawn from, with production outpacing
+          // consumption — it genuinely can't accept more right now. Record
+          // the first time this happens (the outer solve uses it as the
+          // earliest possible restart time), and — once a restart time has
+          // actually been decided for THIS tank — pause here rather than
+          // moving on for good; prodIdx deliberately doesn't advance, so
+          // production resumes on this SAME tank once restartAt is reached
+          // (see restartBoundary above).
+          if(capHitTime==null) capHitTime = t;
+          if(isRestartTank && restartAt!=null && restartAt > t + 1e-9){
+            tankIdle = true;
+            events.push({hours:t, kind:"prodPause", tankId:prodTankId, levels:snap()});
+            continue;
+          }
+          actualCutovers[prodIdx] = t;
           const fromId = prodTankId;
-          const reason = (!isLastProdTank && viaTarget) ? "target" : "capacity";
-          if(!isLastProdTank && !viaTarget && isFinite(targets[prodTankId])) capBeforeTarget[prodTankId] = true;
           prodIdx++;
+          producedThisTurn = false;
           const toId = prodIdx < prodSeq.length ? prodSeq[prodIdx] : null;
-          events.push({hours:t, kind:"prodSwitch", fromId, toId, reason, levels:snap()});
+          events.push({hours:t, kind:"prodSwitch", fromId, toId, reason:"capacity", levels:snap()});
+          continue;
+        }
+        if(type==="stopBoundary"){
+          actualCutovers[prodIdx] = t;
+          const fromId = prodTankId;
+          const hadProduced = producedThisTurn;
+          prodIdx++;
+          producedThisTurn = false;
+          // A tank that never actually received any production time (its
+          // own target was already met without it — see the outer
+          // solve's "noProd already meets target" case) is a silent skip,
+          // not a "reaches its target" event — nothing here for the
+          // officer to act on.
+          if(hadProduced){
+            const toId = prodIdx < prodSeq.length ? prodSeq[prodIdx] : null;
+            events.push({hours:t, kind:"prodSwitch", fromId, toId, reason:"target", levels:snap()});
+          }
           continue;
         }
         if(type==="empty"){
           const fromId = consTankId;
+          const reason = consViaTarget ? "target" : "empty";
+          const hadConsumed = consumedThisTurn;
           consIdx++;
-          const toId = consIdx < consSeq.length ? consSeq[consIdx] : null;
-          events.push({hours:t, kind:"consSwitch", fromId, toId, levels:snap()});
+          consumedThisTurn = false;
+          // Same reasoning as the production side's silent skip: a tank
+          // that begins its turn already at or below its own target never
+          // actually gets drawn from at all, so there's nothing to report.
+          if(hadConsumed){
+            const toId = consIdx < consSeq.length ? consSeq[consIdx] : null;
+            events.push({hours:t, kind:"consSwitch", fromId, toId, reason, levels:snap()});
+          }
           continue;
         }
       }
-      return {levels, minSeen, capBeforeTarget, events};
+      return {levels, minSeen, events, actualCutovers, capHitTime};
     }
 
-    let status, stopHours = null, shortfall = null, finalRes;
+    let status, shortfall = null, finalRes, driverTankId = null;
 
     if(!prodSeq.length){
       status = "no-production";
-      finalRes = simulateWithStop(totalHours);
-    } else if(!hasFinalTarget){
-      status = "no-target";
-      finalRes = simulateWithStop(totalHours); // no goal defined — production just runs the rest of the voyage
+      finalRes = simulateSchedule([], null, null);
     } else {
-      const target = targets[lastProdId];
-      // Zero production time — if the last tank is already at/above its
-      // target even after whatever consumption happens before genStartHours,
-      // the generator genuinely never needs to run.
-      const atMin = simulateWithStop(genStartHours);
-      if(atMin.levels[lastProdId] >= target - 1e-9){
-        status = "surplus";
-        stopHours = genStartHours;
-        finalRes = atMin;
-      } else {
-        // Maximum production time — if the last tank still can't reach its
-        // target even running the generator the entire rest of the voyage,
-        // no stop time exists.
-        const atMax = simulateWithStop(totalHours);
-        if(atMax.levels[lastProdId] < target - 1e-9){
-          status = "insufficient";
-          shortfall = target - atMax.levels[lastProdId];
-          finalRes = atMax;
-        } else {
-          // Binary search: the last tank's arrival level is monotonic
-          // non-decreasing in the stop time S (more production can only
-          // raise it, and stopping later always leaves less time for
-          // anything to drain it back down before arrival), so this
-          // reliably converges on the S that lands it exactly on target —
-          // not just the S where it first touches target mid-voyage.
-          let lo = genStartHours, hi = totalHours;
-          for(let i=0;i<60;i++){
-            const mid = (lo+hi)/2;
-            const lvl = simulateWithStop(mid).levels[lastProdId];
-            if(lvl < target - 1e-9) lo = mid; else hi = mid;
-          }
-          // Rounded to the nearest second — see roundHrs()'s comment above;
-          // bisection converges arbitrarily close but not bit-exact, and
-          // re-simulating at the rounded instant keeps the displayed tank
-          // levels consistent with the displayed stop time.
-          hi = roundHrs(hi);
-          status = "ok";
-          stopHours = hi;
-          finalRes = simulateWithStop(hi);
+      // Walk the Production fill order tank by tank, giving EVERY tank —
+      // not just the last one — the same "correct for future draining"
+      // protection: figure out what each tank would end up at with zero
+      // further production, and if that's short of its own target, decide
+      // exactly how long to produce into it before moving on. See the
+      // plan for the full derivation of both formulas below.
+      const tankStopAt = new Array(prodSeq.length).fill(Infinity);
+      let cursor = genStartHours;
+      let anyNeedsProduction = false;
+      for(let i=0; i<prodSeq.length; i++){
+        const tankId = prodSeq[i];
+        const target = targets[tankId];
+        if(!isFinite(target)){
+          // No target — keep today's simple behavior: fill to capacity,
+          // no correction needed since nothing depends on hitting an exact
+          // number. Find its actual cutover so the NEXT tank's cursor is
+          // correct, then move on.
+          const probe = simulateSchedule(tankStopAt, null, null);
+          cursor = probe.actualCutovers[i]!=null ? probe.actualCutovers[i] : totalHours;
+          continue;
         }
+        // Would this tank already meet its target with ZERO further
+        // production? (Truncated by setting its own stop to `cursor` —
+        // zero duration — so only tanks already confirmed ahead of it get
+        // their production; tanks after it don't matter for its own level.)
+        const trialNoProd = tankStopAt.slice();
+        trialNoProd[i] = cursor;
+        const noProd = simulateSchedule(trialNoProd, null, null).levels[tankId];
+        if(noProd >= target - 1e-9){
+          tankStopAt[i] = cursor; // confirmed: skip, no time spent — cursor unchanged
+          continue;
+        }
+        anyNeedsProduction = true;
+        // The immediate-fill cutover: swapping one hour from drain-only to
+        // producing always shifts this tank's own arrival level by exactly
+        // one hour's production rate, regardless of where that hour sits —
+        // so this is exactly when to stop producing into it and move on,
+        // PROVIDED (a) it doesn't hit its own physical capacity first, and
+        // (b) this tank's zero-production trajectory never actually ran
+        // dry before totalHours — if it does, `noProd` is a clamped-at-0
+        // value and the clean linear formula above no longer holds, so
+        // this is verified directly against the real arrival level rather
+        // than trusted blindly.
+        const cutoverA = roundHrs(cursor + (target - noProd) / prodPerHour);
+        const trialA = tankStopAt.slice();
+        trialA[i] = cutoverA;
+        const resA = simulateSchedule(trialA, null, null);
+        if(Math.abs(resA.levels[tankId] - target) < 1e-6){
+          // Confirmed — move on to the next tank.
+          tankStopAt[i] = cutoverA;
+          cursor = resA.actualCutovers[i]!=null ? resA.actualCutovers[i] : cutoverA;
+          continue;
+        }
+        // Structure A didn't land on target — either capacity got in the
+        // way, or (rarer) this tank's own consumption dynamics during the
+        // burst don't match the closed form's assumptions. Find out what
+        // simply running continuously, with no deliberate cutover at all,
+        // actually achieves — the basis for the more general restart-based
+        // solve (and, on its own, already correct for the degenerate case
+        // where production and consumption on this tank net to zero and
+        // running all the way to arrival was the answer all along).
+        const atMaxRes = simulateSchedule(tankStopAt, null, null); // tankStopAt[i] still Infinity here
+        const atMax = atMaxRes.levels[tankId];
+        const capHitTime = atMaxRes.capHitTime;
+        const cap = caps[tankId];
+        if(atMax >= target - 1e-9){
+          cursor = atMaxRes.actualCutovers[i]!=null ? atMaxRes.actualCutovers[i] : totalHours;
+          continue;
+        }
+        if(isFinite(cap) && target > cap + 1e-9){
+          // This tank's target physically exceeds its own capacity,
+          // regardless of scheduling — no restart could ever fix that, so
+          // there's no reason to give up on the rest of the sequence over
+          // it. Cap out (today's plain behavior) and let production move
+          // on to the next tank; this tank's own result tile already
+          // flags it as short, the same way a non-restart-eligible tank
+          // always has.
+          cursor = capHitTime!=null ? capHitTime : totalHours;
+          continue;
+        }
+        if(capHitTime==null){
+          // Never actually hit capacity — a genuine rate/time shortfall,
+          // not recoverable by a restart.
+          status = "insufficient";
+          shortfall = target - atMax;
+          driverTankId = tankId;
+          finalRes = atMaxRes;
+          break;
+        }
+        // Closed-form restart time (same derivation, now anchored to this
+        // tank instead of always the last one): restarting any later than
+        // this would fall short; any earlier wastes generator runtime this
+        // tank doesn't need. Refined by a narrow bisection on the rare
+        // chance the closed form doesn't land exactly (resuming production
+        // changing which tank consumption would otherwise have moved on
+        // to in the meantime) — bounded well clear of capHitTime itself,
+        // since restarting immediately at the instant capacity was hit is
+        // never actually the answer.
+        let R = totalHours - (target - atMax) / prodPerHour;
+        R = clamp(roundHrs(R), capHitTime, totalHours);
+        let trial = simulateSchedule(tankStopAt, i, R);
+        if(Math.abs(trial.levels[tankId] - target) > 1e-6){
+          let lo = capHitTime, hi = totalHours;
+          for(let k=0;k<60;k++){
+            const mid = (lo+hi)/2;
+            const lvl = simulateSchedule(tankStopAt, i, mid).levels[tankId];
+            if(lvl >= target - 1e-9) lo = mid; else hi = mid;
+          }
+          R = roundHrs(lo);
+          trial = simulateSchedule(tankStopAt, i, R);
+        }
+        if(trial.levels[tankId] < target - 1e-9){
+          status = "insufficient";
+          shortfall = target - trial.levels[tankId];
+          driverTankId = tankId;
+        } else {
+          status = "ok";
+        }
+        finalRes = trial;
+        break; // this tank consumes the rest of the voyage — later tanks get no production
+      }
+      if(!status){
+        // Every tank resolved without needing a restart.
+        finalRes = simulateSchedule(tankStopAt, null, null);
+        status = anyNeedsProduction ? "ok" : "surplus";
       }
     }
 
@@ -5803,8 +5938,9 @@
       if(finalRes.minSeen[t.id] < threshold) hypermistWarnings.push({name: t.name||"Tank", minLevel: finalRes.minSeen[t.id], threshold});
     });
 
-    return {status, stopHours, totalHours, levels: finalRes.levels, targets, capBeforeTarget: finalRes.capBeforeTarget, shortfall,
-            genStartHours, startedBeforeDeparture, neverStarts, dep, hypermistWarnings, events: finalRes.events};
+    return {status, totalHours, levels: finalRes.levels, targets, shortfall, driverTankId,
+            genStartHours, startedBeforeDeparture, neverStarts, dep, hypermistWarnings, events: finalRes.events,
+            initLevels};
   }
 
   function fwPortSelectHTML(){
@@ -5993,17 +6129,22 @@
     }
     card.classList.add("has-value");
     let html = "";
+    // Reference block — departure date/time and every tank's own target,
+    // pinned above the timeline so neither needs a scroll back up to the
+    // Voyage Inputs/Tanks cards to check what was actually entered.
+    html += '<div class="req-note" style="margin-top:0;">Departure: '+sim.dep.instant.toUTC().toFormat("dd LLL yyyy, HH:mm")+' UTC</div>';
+    const targetTanks = state.freshwaterPlanner.tanks.filter(t => isFinite(parseFloat(t.target)));
+    if(targetTanks.length){
+      html += '<div class="req-note" style="margin-top:2px;">Targets: '+targetTanks.map(t => escHtml(t.name||"Tank")+' &rarr; '+fmtQty(parseFloat(t.target))+' '+unit).join(' &middot; ')+'</div>';
+    }
     if(sim.startedBeforeDeparture){
       html += '<p class="req-note" style="margin-top:0;">Generator start entered is before departure &mdash; treated as already running from the start of the voyage.</p>';
     }
-    const lastProdId = state.freshwaterPlanner.prodSequence.length ? state.freshwaterPlanner.prodSequence[state.freshwaterPlanner.prodSequence.length-1] : null;
-    const lastProdTank = lastProdId ? state.freshwaterPlanner.tanks.find(x => x.id===lastProdId) : null;
     if(sim.status==="no-production"){
       html += '<p class="req-note warn">No tank is flagged Production &mdash; there&rsquo;s nothing for the generator to stop. Showing tank levels at arrival below.</p>';
-    } else if(sim.status==="no-target"){
-      html += '<p class="req-note warn">'+escHtml(lastProdTank?lastProdTank.name||"The last tank":"The last tank")+' in the Production fill order has no target set, so there&rsquo;s no defined stop time &mdash; production is shown running the whole passage from your generator start time.</p>';
     } else if(sim.status==="insufficient"){
-      html += '<p class="req-note danger">'+escHtml(lastProdTank?(lastProdTank.name||"Target"):"Target")+'&rsquo;s target isn&rsquo;t reachable even running the generator the rest of the passage &mdash; short by '+fmtQty(sim.shortfall)+' '+unit+'.</p>';
+      const driverTank = sim.driverTankId ? state.freshwaterPlanner.tanks.find(x => x.id===sim.driverTankId) : null;
+      html += '<p class="req-note danger">'+escHtml(driverTank?(driverTank.name||"Target"):"Target")+'&rsquo;s target isn&rsquo;t reachable even running the generator the rest of the passage &mdash; short by '+fmtQty(sim.shortfall)+' '+unit+'.</p>';
       if(sim.neverStarts){
         html += '<p class="req-note warn">Generator start entered is at or after arrival &mdash; production never runs during this passage.</p>';
       }
@@ -6018,28 +6159,53 @@
     const tankName = id => { const t = fwTanks.find(x => x.id===id); return t ? (t.name||"Tank") : "Tank"; };
     const levelsLineHTML = lv => fwTanks.map(t => escHtml(t.name||"Tank")+': '+(lv[t.id]!=null?fmtQty(lv[t.id]):"—")+' '+unit).join(' &middot; ');
     const eventNoteHTML = ev => {
+      if(ev.kind==="depart") return 'Vessel departs';
       if(ev.kind==="consStart") return 'Consumption begins &mdash; drawing from <b>'+escHtml(tankName(ev.tankId))+'</b>';
       if(ev.kind==="prodStart") return 'Generator starts &mdash; producing into <b>'+escHtml(tankName(ev.tankId))+'</b>';
       if(ev.kind==="prodStop") return 'Generator stops producing into <b>'+escHtml(tankName(ev.tankId))+'</b>';
+      if(ev.kind==="prodPause") return '<b>'+escHtml(tankName(ev.tankId))+'</b> reaches capacity &mdash; generator stops (still draining by consumption)';
+      if(ev.kind==="prodResume") return 'Generator resumes &mdash; producing into <b>'+escHtml(tankName(ev.tankId))+'</b> again';
       if(ev.kind==="prodSwitch"){
         const why = ev.reason==="target" ? "reaches its target" : "reaches capacity";
         return '<b>'+escHtml(tankName(ev.fromId))+'</b> '+why+(ev.toId ? ' &mdash; production switches to <b>'+escHtml(tankName(ev.toId))+'</b>' : ' &mdash; no further tanks in the Production fill order');
       }
       if(ev.kind==="consSwitch"){
-        return '<b>'+escHtml(tankName(ev.fromId))+'</b> runs dry'+(ev.toId ? ' &mdash; consumption switches to <b>'+escHtml(tankName(ev.toId))+'</b>' : ' &mdash; no further tanks in the Consumption draw order');
+        const why = ev.reason==="target" ? "reaches its target" : "runs dry";
+        return '<b>'+escHtml(tankName(ev.fromId))+'</b> '+why+(ev.toId ? ' &mdash; consumption switches to <b>'+escHtml(tankName(ev.toId))+'</b>' : ' &mdash; no further tanks in the Consumption draw order');
       }
       if(ev.kind==="arrival") return 'Arrival';
       return '';
     };
-    if((sim.events||[]).length){
+    // "Vessel departs" is always the first row — reusing initLevels (the
+    // exact same starting point simulateFwPlanner() itself began from)
+    // rather than assuming sim.events[0] is at hours:0, which isn't true
+    // when neither role is flagged on any tank.
+    const timelineEvents = [{hours:0, kind:"depart", levels: sim.initLevels}].concat(sim.events||[]);
+    if(timelineEvents.length > 1){
       html += '<div class="fw-timeline">';
-      sim.events.forEach(ev => {
+      let prevLevels = null;
+      timelineEvents.forEach(ev => {
         const at = sim.dep.instant.toUTC().plus({hours: ev.hours});
+        let deltaHTML = "";
+        if(prevLevels){
+          // Net change since the last row — a tank doing double duty
+          // already nets production against consumption automatically,
+          // so this is the one number that actually answers "how much
+          // moved," not two figures that would partly cancel out anyway.
+          const parts = fwTanks.filter(t => Math.abs((ev.levels[t.id]||0)-(prevLevels[t.id]||0)) > 0.05)
+            .map(t => {
+              const d = ev.levels[t.id] - prevLevels[t.id];
+              return escHtml(t.name||"Tank")+': '+(d>0?'+':'&minus;')+fmtQty(Math.abs(d))+' '+unit;
+            });
+          if(parts.length) deltaHTML = '<div class="req-note" style="margin-top:2px;">Since last: '+parts.join(' &middot; ')+'</div>';
+        }
         html += '<div class="route-leg">'+
           '<div class="text-brass" style="font-weight:600;">'+at.toFormat("dd LLL yyyy, HH:mm")+' UTC</div>'+
           '<div style="margin-top:2px;">'+eventNoteHTML(ev)+'</div>'+
           '<div class="req-note" style="margin-top:4px;">'+levelsLineHTML(ev.levels)+'</div>'+
+          deltaHTML+
         '</div>';
+        prevLevels = ev.levels;
       });
       html += '</div>';
     }
@@ -6052,18 +6218,47 @@
       const cap = parseFloat(t.capacity);
       const threshold = parseFloat(t.alarmThreshold);
       const target = parseFloat(t.target);
-      let status = "ok";
+      let status = "ok", label = null;
       if(level!=null){
         if(level<=0) status = "danger";
         else if(t.hypermist && isFinite(threshold) && level<threshold) status = "danger";
         else if(isFinite(target) && level < target - 1e-9) status = "warn";
+        // Landed above its own target rather than below it — same amber
+        // "needs a look" color as LOW (both mean "didn't land where you
+        // set"; a third color for this would just be more to read), but
+        // a distinct label so the direction is still clear at a glance.
+        else if(isFinite(target) && level > target + 1e-9){ status = "warn"; label = "HIGH"; }
         else if(isFinite(cap) && cap>0 && level/cap<0.15) status = "warn";
       }
       html += '<div class="stat-tile"><div class="k">'+escHtml(t.name||"Tank")+'</div><div class="v">'+(level!=null?fmtQty(level):"—")+' '+unit+'</div>'+
-        '<span class="consum-chip '+status+'" style="margin-top:4px; display:inline-block;">'+STATUS_LABEL[status]+'</span></div>';
+        '<span class="consum-chip '+status+'" style="margin-top:4px; display:inline-block;">'+(label||STATUS_LABEL[status])+'</span></div>';
     });
     html += '</div>';
     el.innerHTML = html;
+  }
+
+  // Clamps genDate/genTime back to departure's own instant — expressed in
+  // whichever fwGenZone offset is currently selected, so the fields still
+  // show a sensible, directly-typeable value rather than some arbitrary
+  // zone — whenever the entered value lands before departure. Same
+  // "clamp on input" precedent already used for route-leg distance
+  // capping (updateLegDistanceCaps()'s distEl.value = maxDist) rather
+  // than relying on a native min attribute alone, which is inconsistently
+  // enforced across browsers for date/time inputs and blind to this
+  // cross-timezone comparison entirely. Returns true if it had to clamp.
+  function clampFwGenStart(){
+    const fw = state.freshwaterPlanner;
+    const dep = departureInstant();
+    if(!dep || !fw.genDate || !fw.genTime) return false;
+    const genDT = DT.fromISO(fw.genDate+"T"+fw.genTime, {zone: fw.genZone});
+    if(!genDT.isValid) return false;
+    if(genDT.toUTC().diff(dep.instant.toUTC(), "hours").hours < -1e-9){
+      const depInZone = dep.instant.toUTC().setZone(fw.genZone);
+      fw.genDate = depInZone.toFormat("yyyy-LL-dd");
+      fw.genTime = depInZone.toFormat("HH:mm");
+      return true;
+    }
+    return false;
   }
 
   function renderFwPlanner(){
@@ -6072,8 +6267,13 @@
     portSelect.innerHTML = fwPortSelectHTML();
     portSelect.value = state.fwPlannerPort;
     fillOffsetSelect(document.getElementById("fwGenZone"), false, state.freshwaterPlanner.genZone);
+    clampFwGenStart(); // catches a departure date/time edited on the ETA tab after this was already set
     document.getElementById("fwGenDate").value = state.freshwaterPlanner.genDate;
     document.getElementById("fwGenTime").value = state.freshwaterPlanner.genTime;
+    const dep = departureInstant();
+    document.getElementById("fwGenDepartureNote").textContent = dep
+      ? "Departure: "+dep.instant.toUTC().toFormat("dd LLL yyyy, HH:mm")+" UTC"
+      : "Complete the ETA tab's departure date/time first.";
     document.getElementById("fwConsPerDay").value = state.freshwaterPlanner.consPerDay;
     document.getElementById("fwProdPerDay").value = state.freshwaterPlanner.prodPerDay;
     renderFwLegs();
@@ -6098,9 +6298,19 @@
     saveState();
     rebuildFwForLegChange();
   });
-  document.getElementById("fwGenDate").addEventListener("input", (e) => { state.freshwaterPlanner.genDate = e.target.value; saveState(); renderFwResults(); });
-  document.getElementById("fwGenTime").addEventListener("input", (e) => { state.freshwaterPlanner.genTime = e.target.value; saveState(); renderFwResults(); });
-  document.getElementById("fwGenZone").addEventListener("change", (e) => { state.freshwaterPlanner.genZone = e.target.value; saveState(); renderFwResults(); });
+  function onFwGenStartInput(){
+    clampFwGenStart(); // no-op unless the new value actually lands before departure
+    document.getElementById("fwGenDate").value = state.freshwaterPlanner.genDate;
+    document.getElementById("fwGenTime").value = state.freshwaterPlanner.genTime;
+    saveState();
+    renderFwResults();
+  }
+  document.getElementById("fwGenDate").addEventListener("input", (e) => { state.freshwaterPlanner.genDate = e.target.value; onFwGenStartInput(); });
+  document.getElementById("fwGenTime").addEventListener("input", (e) => { state.freshwaterPlanner.genTime = e.target.value; onFwGenStartInput(); });
+  // A zone change can ALSO push an already-valid combination before
+  // departure (e.g. switching from UTC+0 to UTC-12 shifts the instant
+  // earlier), so this re-clamps too, not just the date/time fields.
+  document.getElementById("fwGenZone").addEventListener("change", (e) => { state.freshwaterPlanner.genZone = e.target.value; onFwGenStartInput(); });
   document.getElementById("fwConsPerDay").addEventListener("input", (e) => { state.freshwaterPlanner.consPerDay = e.target.value; saveState(); renderFwResults(); });
   document.getElementById("fwProdPerDay").addEventListener("input", (e) => { state.freshwaterPlanner.prodPerDay = e.target.value; saveState(); renderFwResults(); });
   document.getElementById("fwAddTankBtn").addEventListener("click", fwAddTank);
@@ -6173,6 +6383,18 @@
     showFreshwater();
   });
   document.getElementById("fwBackBtn").addEventListener("click", showHome);
+  // Quick-switch to ETA/Consumption without detouring through Home — same
+  // two lines the Home cards themselves use (click the pill tab, then
+  // reveal the app view), so History/bottom-bar/etc. all keep working
+  // exactly as they already do from there.
+  document.getElementById("fwGotoEta").addEventListener("click", () => {
+    document.querySelector('.main-tab[data-tab="eta"]').click();
+    showAppView();
+  });
+  document.getElementById("fwGotoConsumption").addEventListener("click", () => {
+    document.querySelector('.main-tab[data-tab="consumption"]').click();
+    showAppView();
+  });
 
   // Sidebar drawer — same fixed-overlay hidden/.open pattern as the History
   // sheet (openHistory/closeHistory below), just sliding in from the left.
