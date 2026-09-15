@@ -3069,27 +3069,31 @@
 
   // Freshwater Planner — deliberately independent of state.consumption.freshWater
   // above (a different tool answering a different question — generator-stop
-  // timing across multiple tanks, not a ship-wide ROB overview). role.production/
-  // consumption both false means Reserve/Standby — no separate boolean needed,
-  // that state is just the absence of either role.
+  // timing across multiple tanks, not a ship-wide ROB overview). Every tank
+  // participates in both filling and drawing — there's no per-tank role
+  // toggle, since in reality any tank can be either; the fill/draw
+  // sequence order is the only thing you actually control per tank.
   const defaultFwTank = (name) => ({
     id: newItemId(), name: name||"", capacity: "", rob: "",
-    role: {production:false, consumption:false},
-    hypermist: false, alarmThreshold: "",
+    lowLimitOn: false, lowLimit: "",  // was "hypermist reserve" — now a general, enforced floor
     target: ""    // per-tank target ROB at arrival — replaces the old combined targetAtArrival
   });
   // Mirrors defaultRouteLeg() (Consumption tab's By Region mode) but only
   // carries what this tool needs to total up transit hours — no fuel/lube
   // rate maps, those don't apply here.
   const defaultFwLeg = (label) => ({id: newItemId(), label: label||"", distance:"", speedOverride:""});
-  const defaultFreshwaterPlanner = () => ({
-    tanks: [defaultFwTank("FW Tank 1"), defaultFwTank("FW Tank 2")],
-    unit: "m³",
-    consPerDay: "", prodPerDay: "",
-    legs: [defaultFwLeg(""), defaultFwLeg("")],
-    genDate: "", genTime: "", genZone: "UTC+0",
-    prodSequence: [], consSequence: []
-  });
+  const defaultFreshwaterPlanner = () => {
+    const tanks = [defaultFwTank("FW Tank 1"), defaultFwTank("FW Tank 2")];
+    const ids = tanks.map(t => t.id);
+    return {
+      tanks,
+      unit: "m³",
+      consPerDay: "", prodPerDay: "",
+      legs: [defaultFwLeg(""), defaultFwLeg("")],
+      genDate: "", genTime: "", genZone: "UTC+0",
+      prodSequence: ids.slice(), consSequence: ids.slice()
+    };
+  };
 
   let state = {
     theme: "system",
@@ -3179,9 +3183,8 @@
       name: t.name || "",
       capacity: t.capacity || "",
       rob: t.rob || "",
-      role: {production: !!(t.role && t.role.production), consumption: !!(t.role && t.role.consumption)},
-      hypermist: !!t.hypermist,
-      alarmThreshold: t.alarmThreshold || "",
+      lowLimitOn: !!(t.lowLimitOn || t.hypermist), // t.hypermist: migrates a save from before this rename
+      lowLimit: t.lowLimit || t.alarmThreshold || "",
       target: t.target || ""
     })) : [defaultFwTank("FW Tank 1"), defaultFwTank("FW Tank 2")];
     const legs = (Array.isArray(src.legs) && src.legs.length) ? src.legs.map(l => ({
@@ -3190,12 +3193,15 @@
       distance: l.distance || "",
       speedOverride: l.speedOverride || ""
     })) : [defaultFwLeg(""), defaultFwLeg("")];
-    function cleanSeq(seq, roleKey){
-      const out = (Array.isArray(seq) ? seq : []).filter(id => {
-        const t = tanks.find(x => x.id === id);
-        return t && t.role[roleKey];
-      });
-      tanks.forEach(t => { if(t.role[roleKey] && !out.includes(t.id)) out.push(t.id); });
+    // Every tank participates in both fill and draw now — no per-tank role
+    // to filter on. This just keeps a saved order limited to tanks that
+    // still exist, and appends any tank missing from it (newly added, or
+    // migrating from an older save where it wasn't flagged for this role)
+    // at the end — self-healing, same philosophy as getFocusPort()'s own
+    // stale-selection repair.
+    function cleanSeq(seq){
+      const out = (Array.isArray(seq) ? seq : []).filter(id => tanks.some(t => t.id === id));
+      tanks.forEach(t => { if(!out.includes(t.id)) out.push(t.id); });
       return out;
     }
     return {
@@ -3205,8 +3211,8 @@
       legs,
       genDate: src.genDate || "", genTime: src.genTime || "",
       genZone: src.genZone || "UTC+0",
-      prodSequence: cleanSeq(src.prodSequence, "production"),
-      consSequence: cleanSeq(src.consSequence, "consumption")
+      prodSequence: cleanSeq(src.prodSequence),
+      consSequence: cleanSeq(src.consSequence)
     };
   }
   function loadState(){
@@ -5542,6 +5548,7 @@
   function fwAddTank(){
     const n = state.freshwaterPlanner.tanks.length;
     state.freshwaterPlanner.tanks.push(defaultFwTank("FW Tank "+(n+1)));
+    state.freshwaterPlanner = normalizeFreshwaterPlanner(state.freshwaterPlanner); // appends the new tank to both sequences
     saveState();
     renderFwPlanner();
   }
@@ -5552,18 +5559,10 @@
     saveState();
     renderFwPlanner();
   }
-  function fwToggleRole(id, roleKey){
+  function fwToggleLowLimit(id){
     const t = state.freshwaterPlanner.tanks.find(x => x.id === id);
     if(!t) return;
-    t.role[roleKey] = !t.role[roleKey];
-    state.freshwaterPlanner = normalizeFreshwaterPlanner(state.freshwaterPlanner); // keeps prodSequence/consSequence in sync with this toggle
-    saveState();
-    renderFwPlanner();
-  }
-  function fwToggleHypermist(id){
-    const t = state.freshwaterPlanner.tanks.find(x => x.id === id);
-    if(!t) return;
-    t.hypermist = !t.hypermist;
+    t.lowLimitOn = !t.lowLimitOn;
     saveState();
     renderFwPlanner();
   }
@@ -5632,10 +5631,12 @@
     const neverStarts = genStartRaw > totalHours + 1e-9;
 
     const tanks = fw.tanks;
-    const initLevels = {}, caps = {}, targets = {};
+    const initLevels = {}, caps = {}, targets = {}, lowLimits = {}, tankById = {};
     tanks.forEach(t => {
       const rob = parseFloat(t.rob)||0;
       initLevels[t.id] = rob; caps[t.id] = parseFloat(t.capacity); targets[t.id] = parseFloat(t.target);
+      lowLimits[t.id] = t.lowLimitOn ? parseFloat(t.lowLimit) : NaN;
+      tankById[t.id] = t;
     });
 
     const prodSeq = fw.prodSequence.slice(), consSeq = fw.consSequence.slice();
@@ -5667,8 +5668,15 @@
       let prodStartLogged = false;
       let capHitTime = null; // first physical-capacity hit for whichever tank is currently active
       let tankIdle = false; // current production tank paused at capacity, waiting for restartAt
-      let producedThisTurn = false; // true once this tank has actually received any production time
+      let producedThisTurn = false; // true once the BACKGROUND tank has actually received any production time
       let consumedThisTurn = false; // true once this tank has actually been drawn from at all
+      // Low-limit priority interrupt: only the tank currently being drawn
+      // from (per the fixed draw sequence) can ever be at risk — every
+      // other tank is static until its own turn — so production only ever
+      // needs to track ONE emergency at a time, not a full free-for-all
+      // scheduler. null means production is on its normal background
+      // tank-by-tank schedule.
+      let emergencyTankId = null;
       let t = 0, prodIdx = 0, consIdx = 0, guard = 0;
       while(t < totalHours - 1e-9 && guard < 5000){
         guard++;
@@ -5676,7 +5684,11 @@
         const stopAt = prodIdx < tankStopAt.length ? tankStopAt[prodIdx] : Infinity;
         const isRestartTank = prodIdx === restartTankIdx;
         const idleWaitingForRestart = tankIdle && isRestartTank && restartAt!=null && t < restartAt - 1e-9;
-        const producing = !beforeGenStart && !idleWaitingForRestart && prodIdx < prodSeq.length && (stopAt - t > 1e-9);
+        const inEmergency = emergencyTankId != null;
+        const backgroundTankId = prodIdx < prodSeq.length ? prodSeq[prodIdx] : null;
+        const backgroundProducing = !beforeGenStart && !idleWaitingForRestart && backgroundTankId!=null && (stopAt - t > 1e-9);
+        const prodTankId = inEmergency ? emergencyTankId : backgroundTankId;
+        const producing = inEmergency ? !beforeGenStart : backgroundProducing;
         const consuming = consIdx < consSeq.length;
 
         // Logged the first time production is genuinely about to run, not
@@ -5684,44 +5696,55 @@
         // entirely (see the outer solve's "noProd already meets target"
         // case) never actually causes the generator to start.
         if(producing && !prodStartLogged){
-          events.push({hours:t, kind:"prodStart", tankId:prodSeq[prodIdx], levels:snap()});
+          events.push({hours:t, kind:"prodStart", tankId:prodTankId, levels:snap()});
           prodStartLogged = true;
         }
 
-        const prodTankId = prodIdx < prodSeq.length ? prodSeq[prodIdx] : null;
         const consTankId = consuming ? consSeq[consIdx] : null;
         const sameTank = producing && consuming && prodTankId===consTankId;
 
         const candidates = [{type:"arrival", time: totalHours - t}];
         if(beforeGenStart) candidates.push({type:"genStartBoundary", time: genStartHours - t});
-        // Always present whenever this tank has a deliberate cutover —
-        // Math.max(0, ...) lets it fire immediately (zero-duration) for a
-        // tank being skipped outright, rather than needing t to already
-        // be strictly before it.
-        if(prodIdx < prodSeq.length && isFinite(stopAt)) candidates.push({type:"stopBoundary", time: Math.max(0, stopAt - t)});
-        if(idleWaitingForRestart) candidates.push({type:"restartBoundary", time: Math.max(0, restartAt - t)});
+        // Background stop/restart boundaries only apply while production
+        // is actually on its background schedule — while an emergency has
+        // it redirected, the background tank is simply frozen, waiting.
+        if(!inEmergency && backgroundTankId!=null && isFinite(stopAt)) candidates.push({type:"stopBoundary", time: Math.max(0, stopAt - t)});
+        if(!inEmergency && idleWaitingForRestart) candidates.push({type:"restartBoundary", time: Math.max(0, restartAt - t)});
         if(producing){
           const cap = caps[prodTankId];
           const netRate = prodPerHour - (sameTank?consPerHour:0);
-          if(isFinite(cap) && netRate>0) candidates.push({type:"prodCeiling", time: Math.max(0, (cap-levels[prodTankId])/netRate)});
+          if(inEmergency){
+            // Refill just far enough to be safe again — its own target if
+            // it has one (capped at physical capacity), else capacity —
+            // the same "ceiling" concept the background schedule already
+            // uses, not a full re-run of the target solve mid-voyage.
+            const ceiling = isFinite(targets[prodTankId]) ? Math.min(targets[prodTankId], isFinite(cap)?cap:Infinity) : cap;
+            if(isFinite(ceiling) && netRate>0) candidates.push({type:"emergencyCeiling", time: Math.max(0, (ceiling-levels[prodTankId])/netRate)});
+          } else if(isFinite(cap) && netRate>0){
+            candidates.push({type:"prodCeiling", time: Math.max(0, (cap-levels[prodTankId])/netRate)});
+          }
         }
-        let consFloor = 0, consViaTarget = false;
         if(consuming){
+          // Consumption is never deliberately stopped — only production
+          // can be turned on or off. A tank always drains toward
+          // genuinely empty; a Low Limit (below) is the one thing that
+          // actively protects it, by redirecting production, not by
+          // pausing the draw itself.
           const netRate = consPerHour - (sameTank?prodPerHour:0);
-          // Symmetric to production's own ceiling: a tank with a target
-          // is only drawn down TO that target, not past it (falling back
-          // to fully empty when no target is set — today's behavior,
-          // unchanged) — consumption then moves on to the next tank in
-          // the draw order, the same way production moves on once a
-          // tank's own ceiling is reached.
-          consFloor = isFinite(targets[consTankId]) ? Math.max(0, targets[consTankId]) : 0;
-          consViaTarget = consFloor > 0;
-          if(netRate>0) candidates.push({type:"empty", time: Math.max(0, (levels[consTankId]-consFloor)/netRate)});
+          if(netRate>0) candidates.push({type:"empty", time: Math.max(0, (levels[consTankId]-0)/netRate)});
+        }
+        // The priority interrupt itself: only considered when production
+        // isn't already pointed at the tank currently being drawn from,
+        // and only while not already mid-emergency (at most one active
+        // interrupt at a time — the plan's own simplifying scope).
+        if(!inEmergency && consuming && consTankId !== prodTankId && isFinite(lowLimits[consTankId])){
+          const netDrain = consPerHour - (producing && prodTankId===consTankId ? prodPerHour : 0); // prodTankId!==consTankId here, kept symmetric with the "empty" candidate above
+          if(netDrain>0) candidates.push({type:"lowLimitBreach", time: Math.max(0, (levels[consTankId]-lowLimits[consTankId])/netDrain)});
         }
         candidates.sort((a,b) => a.time-b.time);
         const dt = candidates[0].time, type = candidates[0].type;
 
-        if(producing){ levels[prodTankId] += prodPerHour*dt; minSeen[prodTankId] = Math.min(minSeen[prodTankId], levels[prodTankId]); producedThisTurn = true; }
+        if(producing){ levels[prodTankId] += prodPerHour*dt; minSeen[prodTankId] = Math.min(minSeen[prodTankId], levels[prodTankId]); if(!inEmergency) producedThisTurn = true; }
         if(consuming){ levels[consTankId] -= consPerHour*dt; minSeen[consTankId] = Math.min(minSeen[consTankId], levels[consTankId]); consumedThisTurn = true; }
         t += dt;
 
@@ -5730,6 +5753,16 @@
         if(type==="restartBoundary"){
           tankIdle = false;
           events.push({hours:t, kind:"prodResume", tankId:prodTankId, levels:snap()});
+          continue;
+        }
+        if(type==="lowLimitBreach"){
+          events.push({hours:t, kind:"prodInterrupt", fromId: backgroundTankId, toId: consTankId, levels:snap()});
+          emergencyTankId = consTankId;
+          continue;
+        }
+        if(type==="emergencyCeiling"){
+          events.push({hours:t, kind:"prodReturn", fromId: emergencyTankId, toId: backgroundTankId, levels:snap()});
+          emergencyTankId = null;
           continue;
         }
         if(type==="prodCeiling"){
@@ -5774,16 +5807,15 @@
         }
         if(type==="empty"){
           const fromId = consTankId;
-          const reason = consViaTarget ? "target" : "empty";
           const hadConsumed = consumedThisTurn;
           consIdx++;
           consumedThisTurn = false;
           // Same reasoning as the production side's silent skip: a tank
-          // that begins its turn already at or below its own target never
-          // actually gets drawn from at all, so there's nothing to report.
+          // that begins its turn already empty never actually gets drawn
+          // from at all, so there's nothing to report.
           if(hadConsumed){
             const toId = consIdx < consSeq.length ? consSeq[consIdx] : null;
-            events.push({hours:t, kind:"consSwitch", fromId, toId, reason, levels:snap()});
+            events.push({hours:t, kind:"consSwitch", fromId, toId, reason:"empty", levels:snap()});
           }
           continue;
         }
@@ -5925,21 +5957,24 @@
       }
     }
 
-    // Hypermist alarm — minSeen tracks each tank's true minimum level
-    // across the ENTIRE simulation (both the production-running phase and
-    // the consumption-only phase after the stop point), not just its
-    // start/end value, so a tank that dips low mid-voyage before later
-    // being topped back up is still caught correctly.
-    const hypermistWarnings = [];
+    // Low Limit is now actively enforced during the simulation itself (the
+    // priority interrupt above redirects production to protect whichever
+    // tank is being drawn from before it ever gets there) — so this is a
+    // should-never-fire sanity check, not the primary mechanism. minSeen
+    // tracks each tank's true minimum level across the ENTIRE simulation,
+    // so if a Low Limit is still crossed here, it's a genuine shortfall
+    // (e.g. a limit set impossibly high, or higher than total production
+    // capacity could ever sustain) rather than a scheduling gap.
+    const lowLimitWarnings = [];
     tanks.forEach(t => {
-      if(!t.hypermist) return;
-      const threshold = parseFloat(t.alarmThreshold);
+      if(!t.lowLimitOn) return;
+      const threshold = parseFloat(t.lowLimit);
       if(!isFinite(threshold)) return;
-      if(finalRes.minSeen[t.id] < threshold) hypermistWarnings.push({name: t.name||"Tank", minLevel: finalRes.minSeen[t.id], threshold});
+      if(finalRes.minSeen[t.id] < threshold - 1e-9) lowLimitWarnings.push({name: t.name||"Tank", minLevel: finalRes.minSeen[t.id], threshold});
     });
 
     return {status, totalHours, levels: finalRes.levels, targets, shortfall, driverTankId,
-            genStartHours, startedBeforeDeparture, neverStarts, dep, hypermistWarnings, events: finalRes.events,
+            genStartHours, startedBeforeDeparture, neverStarts, dep, lowLimitWarnings, events: finalRes.events,
             initLevels};
   }
 
@@ -6051,12 +6086,10 @@
         '<div class="field"><label>Current ROB ('+unit+')</label><input type="number" class="fw-tank-rob" inputmode="decimal" min="0" step="any" placeholder="0.0" value="'+escHtml(t.rob)+'"></div>'+
       '</div>'+
       '<div class="field" style="margin-top:10px;"><label>Target ROB at arrival ('+unit+')</label><input type="number" class="fw-tank-target" inputmode="decimal" min="0" step="any" placeholder="0.0" value="'+escHtml(t.target)+'"></div>'+
-      '<div class="rob-vis-toggles" role="group" aria-label="Tank role" style="margin-top:10px;">'+
-        '<button type="button" class="rob-vis-chip fw-role-chip" data-role="production" aria-pressed="'+(t.role.production?"true":"false")+'"><span class="rob-vis-dot"></span>Production</button>'+
-        '<button type="button" class="rob-vis-chip fw-role-chip" data-role="consumption" aria-pressed="'+(t.role.consumption?"true":"false")+'"><span class="rob-vis-dot"></span>Consumption</button>'+
-        '<button type="button" class="rob-vis-chip fw-hypermist-chip" aria-pressed="'+(t.hypermist?"true":"false")+'"><span class="rob-vis-dot"></span>Hypermist Reserve</button>'+
+      '<div class="rob-vis-toggles" role="group" aria-label="Low limit" style="margin-top:10px;">'+
+        '<button type="button" class="rob-vis-chip fw-lowlimit-chip" aria-pressed="'+(t.lowLimitOn?"true":"false")+'"><span class="rob-vis-dot"></span>Low Limit</button>'+
       '</div>'+
-      (t.hypermist ? '<div class="field" style="margin-top:10px;"><label>Low-level alarm ('+unit+')</label><input type="number" class="fw-tank-alarm" inputmode="decimal" min="0" step="any" placeholder="0.0" value="'+escHtml(t.alarmThreshold)+'"></div>' : '')+
+      (t.lowLimitOn ? '<div class="field" style="margin-top:10px;"><label>Low Limit ('+unit+')</label><input type="number" class="fw-tank-lowlimit" inputmode="decimal" min="0" step="any" placeholder="e.g. hypermist reserve, low-level alarm" value="'+escHtml(t.lowLimit)+'"></div>' : '')+
       (canDelete ? '<button type="button" class="link-btn link-btn-danger fw-tank-delete" style="margin-top:10px;">Delete tank</button>' : '')+
     '</div>';
   }
@@ -6086,13 +6119,10 @@
       robEl.addEventListener("input", () => { tank.rob = robEl.value; saveState(); renderFwResults(); });
       const targetEl = card.querySelector(".fw-tank-target");
       targetEl.addEventListener("input", () => { tank.target = targetEl.value; saveState(); renderFwResults(); });
-      card.querySelectorAll(".fw-role-chip").forEach(chip => {
-        chip.addEventListener("click", () => fwToggleRole(id, chip.dataset.role));
-      });
-      const hyperChip = card.querySelector(".fw-hypermist-chip");
-      if(hyperChip) hyperChip.addEventListener("click", () => fwToggleHypermist(id));
-      const alarmEl = card.querySelector(".fw-tank-alarm");
-      if(alarmEl) alarmEl.addEventListener("input", () => { tank.alarmThreshold = alarmEl.value; saveState(); renderFwResults(); });
+      const lowLimitChip = card.querySelector(".fw-lowlimit-chip");
+      if(lowLimitChip) lowLimitChip.addEventListener("click", () => fwToggleLowLimit(id));
+      const lowLimitEl = card.querySelector(".fw-tank-lowlimit");
+      if(lowLimitEl) lowLimitEl.addEventListener("input", () => { tank.lowLimit = lowLimitEl.value; saveState(); renderFwResults(); });
       const delBtn = card.querySelector(".fw-tank-delete");
       if(delBtn) delBtn.addEventListener("click", () => fwDeleteTank(id));
     });
@@ -6165,6 +6195,8 @@
       if(ev.kind==="prodStop") return 'Generator stops producing into <b>'+escHtml(tankName(ev.tankId))+'</b>';
       if(ev.kind==="prodPause") return '<b>'+escHtml(tankName(ev.tankId))+'</b> reaches capacity &mdash; generator stops (still draining by consumption)';
       if(ev.kind==="prodResume") return 'Generator resumes &mdash; producing into <b>'+escHtml(tankName(ev.tankId))+'</b> again';
+      if(ev.kind==="prodInterrupt") return '<b>'+escHtml(tankName(ev.toId))+'</b> approaching its Low Limit &mdash; generator interrupts'+(ev.fromId?' <b>'+escHtml(tankName(ev.fromId))+'</b>':'')+' to protect it';
+      if(ev.kind==="prodReturn") return '<b>'+escHtml(tankName(ev.fromId))+'</b> back to a safe level &mdash; generator returns to'+(ev.toId?' <b>'+escHtml(tankName(ev.toId))+'</b>':' the background schedule');
       if(ev.kind==="prodSwitch"){
         const why = ev.reason==="target" ? "reaches its target" : "reaches capacity";
         return '<b>'+escHtml(tankName(ev.fromId))+'</b> '+why+(ev.toId ? ' &mdash; production switches to <b>'+escHtml(tankName(ev.toId))+'</b>' : ' &mdash; no further tanks in the Production fill order');
@@ -6209,19 +6241,19 @@
       });
       html += '</div>';
     }
-    sim.hypermistWarnings.forEach(w => {
-      html += '<p class="req-note danger" style="margin-top:8px;">&#9888; '+escHtml(w.name)+' projected to drop to '+fmtQty(w.minLevel)+' '+unit+' &mdash; below its '+fmtQty(w.threshold)+' '+unit+' alarm threshold.</p>';
+    sim.lowLimitWarnings.forEach(w => {
+      html += '<p class="req-note danger" style="margin-top:8px;">&#9888; '+escHtml(w.name)+' projected to drop to '+fmtQty(w.minLevel)+' '+unit+' &mdash; below its '+fmtQty(w.threshold)+' '+unit+' Low Limit.</p>';
     });
     html += '<div class="stat-grid" style="margin-top:10px; flex-wrap:wrap;">';
     state.freshwaterPlanner.tanks.forEach(t => {
       const level = sim.levels[t.id];
       const cap = parseFloat(t.capacity);
-      const threshold = parseFloat(t.alarmThreshold);
+      const threshold = parseFloat(t.lowLimit);
       const target = parseFloat(t.target);
       let status = "ok", label = null;
       if(level!=null){
         if(level<=0) status = "danger";
-        else if(t.hypermist && isFinite(threshold) && level<threshold) status = "danger";
+        else if(t.lowLimitOn && isFinite(threshold) && level<threshold) status = "danger";
         else if(isFinite(target) && level < target - 1e-9) status = "warn";
         // Landed above its own target rather than below it — same amber
         // "needs a look" color as LOW (both mean "didn't land where you
