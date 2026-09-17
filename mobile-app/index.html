@@ -40,7 +40,13 @@
     --font-mono:'IBM Plex Mono','SFMono-Regular',Consolas,'Liberation Mono',monospace;
   }
   @media (prefers-color-scheme: light){
-    :root:not([data-theme="dark"]){
+    /* Excludes both "dark" and "dusk" — this only auto-follows the OS when
+       the user hasn't picked an explicit theme (see applyTheme() further
+       down, which now always sets an explicit data-theme, including for
+       the "system" toggle slot, which renders Dusk rather than actually
+       following the OS — this media query is left in place purely as the
+       pre-JS-hydration fallback paint, matching the original design). */
+    :root:not([data-theme="dark"]):not([data-theme="dusk"]){
       --bg:#eef2f5;
       --surface:#ffffff;
       --surface2:#f3f7f9;
@@ -88,6 +94,27 @@
     --warn:#f5a623;
     --danger:#f87171;
     --shadow:rgba(0,0,0,.45);
+  }
+  /* "Dusk" — a third, fixed color mode (warm dark-brown/amber) that sits
+     alongside the original Light/Dark modes rather than replacing them.
+     It's a single fixed look (not itself light/dark-aware), reached via
+     the same theme toggle in the slot that used to be "System" — see
+     applyTheme()/cycleTheme() below. */
+  :root[data-theme="dusk"]{
+    --bg:#170f0a;
+    --surface:#23180f;
+    --surface2:#2e2013;
+    --border:#46331f;
+    --text:#f5ecdd;
+    --text-dim:#b7a288;
+    --accent:#e2982f;
+    --accent-ink:#241505;
+    --brass:#d97a34;
+    --brass-ink:#241505;
+    --ok:#6cc26a;
+    --warn:#e0a83c;
+    --danger:#e2574c;
+    --shadow:rgba(0,0,0,.5);
   }
 
   *{box-sizing:border-box;}
@@ -3249,14 +3276,17 @@
   const themeBtn = document.getElementById("themeBtn");
   const themeBtnHome = document.getElementById("themeBtnHome");
   const themeIcons = {
-    system: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="14" rx="2"></rect><path d="M8 21h8M12 18v3"></path></svg>',
+    system: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v4"></path><path d="m4.9 8.9 1.4 1.4"></path><path d="m17.7 8.9-1.4 1.4"></path><path d="M6 17a6 6 0 0 1 12 0"></path><path d="M2 17h20"></path><path d="M2 21h20"></path></svg>',
     light: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4.5"></circle><path d="M12 2.5v2M12 19.5v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M2.5 12h2M19.5 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"></path></svg>',
     dark: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a6.8 6.8 0 0 0 10.5 10.5Z"></path></svg>'
   };
-  const themeLabels = {system:"System", light:"Light", dark:"Dark"};
+  // "system" is the internal state value for this toggle slot (kept as-is
+  // so cycleTheme()'s three-way cycle and the saved localStorage value
+  // don't need to change) — it now always renders the fixed "Dusk" color
+  // mode below rather than following the OS light/dark preference.
+  const themeLabels = {system:"Dusk", light:"Light", dark:"Dark"};
   function applyTheme(){
-    if(state.theme==="system") document.documentElement.removeAttribute("data-theme");
-    else document.documentElement.setAttribute("data-theme", state.theme);
+    document.documentElement.setAttribute("data-theme", state.theme==="system" ? "dusk" : state.theme);
     const html = themeIcons[state.theme] + "<span class=\"tt-label\">"+themeLabels[state.theme]+"</span>";
     themeBtn.innerHTML = html;
     themeBtnHome.innerHTML = html;
