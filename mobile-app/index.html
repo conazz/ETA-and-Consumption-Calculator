@@ -424,6 +424,17 @@
     font-size:11.5px; padding:6px 10px;
   }
 
+  /* Consumption tab's Fresh Water / Bunker Fuel cards → their own planner
+     shortcuts — a real button (not link-btn's plain text) so it reads as
+     clickable at a glance, plus a slow, continuous nudge on the arrow to
+     draw the eye without being distracting. prefers-reduced-motion
+     (declared near the top of this stylesheet) already turns this off for
+     anyone who wants that. Shared by both the Freshwater Planner and Fuel
+     Planner entry-point buttons. */
+  .open-planner-btn{ font-size:12.5px; padding:7px 12px; }
+  .open-planner-arrow{ display:inline-block; animation:fwArrowNudge 1.6s ease-in-out infinite; }
+  @keyframes fwArrowNudge{ 0%,100%{ transform:translateX(0); } 50%{ transform:translateX(4px); } }
+
   .deg-input{ display:flex; gap:6px; }
   .deg-input input{ flex:1; min-width:0; }
   .deg-input select{ width:58px; flex:none; }
@@ -439,11 +450,11 @@
   }
   .loc-tab.active{ background:var(--accent); border-color:var(--accent); color:var(--accent-ink); }
   .loc-tab:focus-visible{ outline:2px solid var(--accent); outline-offset:1px; }
-  /* Straight / By Region mode switch (#consumModeTabs) — a real sliding
-     segmented control rather than two plain buttons, so the toggle-ness
-     reads from the shape itself. Scoped to .consum-mode-toggle only —
-     .loc-tabs/.loc-tab are shared with the Port/Lat-Long location toggle
-     elsewhere, which stays exactly as it was. */
+  /* Straight / By Leg mode switch (#voyageModeTabs, on the ETA tab) — a real
+     sliding segmented control rather than two plain buttons, so the
+     toggle-ness reads from the shape itself. Scoped to .consum-mode-toggle
+     only — .loc-tabs/.loc-tab are shared with the Port/Lat-Long location
+     toggle elsewhere, which stays exactly as it was. */
   .consum-mode-toggle{ position:relative; }
   .consum-mode-thumb{
     position:absolute; top:0; bottom:0; left:0;
@@ -459,10 +470,10 @@
     transition:color .2s;
   }
   .consum-mode-toggle .loc-tab.active{ background:transparent; border-color:transparent; color:var(--accent-ink); }
-  /* Gentle gold pulse on "By Region" while it's NOT selected — a nudge
+  /* Gentle gold pulse on "By Leg" while it's NOT selected — a nudge
      that it's there to try, same pulsing-hint idiom used elsewhere in this
      app (e.g. the bottom-arrow's flash). Stops on its own once selected. */
-  .consum-mode-toggle .loc-tab[data-mode="region"]:not(.active){
+  .consum-mode-toggle .loc-tab[data-mode="leg"]:not(.active){
     animation:modeHintPulse 2.6s ease-in-out infinite;
   }
   @keyframes modeHintPulse{ 0%,100%{ color:var(--text-dim); } 50%{ color:var(--brass); } }
@@ -613,7 +624,7 @@
   .consum-del:focus-visible{ outline:2px solid var(--accent); outline-offset:1px; }
   .consum-del svg{ width:15px; height:15px; }
 
-  /* By Region mode: per-leg rate mini-inputs, shown under a consumable row's
+  /* By Leg mode: per-leg rate mini-inputs, shown under a consumable row's
      main line instead of a single "Per day" figure. */
   /* display on :not([hidden]) — #fwConsLegRates/#fwProdLegRates are toggled
      via the hidden attribute; an unconditional `display` here would defeat
@@ -647,7 +658,7 @@
   .leg-rob-item b{ font-size:12.5px; color:var(--brass); font-weight:600; }
   .leg-rob-used{ color:var(--text-dim); font-weight:400; font-size:10.5px; margin-top:2px; }
 
-  /* Route Legs card (By Region mode) */
+  /* Route Legs card (By Leg mode) */
   .route-leg{ padding:10px 0; border-top:1px dashed var(--border); }
   .route-leg:first-child{ padding-top:0; border-top:none; }
   .route-leg-head{ display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px; }
@@ -655,6 +666,15 @@
     font-family:var(--font-display); font-weight:600; font-size:12px;
     letter-spacing:0.08em; text-transform:uppercase; color:var(--accent);
   }
+  /* Per-leg remaining-distance hint (updateRouteLegPreviews()) — italic in
+     every state; green + a slow pulse while the leg fits within what's
+     left of the Total Distance, steady red (via the existing .req-note.
+     danger rule) once it doesn't. prefers-reduced-motion already turns
+     off all animations globally (see that rule near the top of this
+     stylesheet), so this needs no separate override for it. */
+  .leg-distance-hint{ font-style:italic; }
+  .leg-distance-hint.ok{ color:var(--ok); animation:legDistancePulse 2.4s ease-in-out infinite; }
+  @keyframes legDistancePulse{ 0%,100%{ opacity:1; } 50%{ opacity:0.45; } }
   .consum-result{
     margin-top:8px; display:flex; align-items:center; justify-content:space-between; gap:8px;
     font-family:var(--font-mono); font-variant-numeric:tabular-nums; font-size:12.5px; color:var(--text-dim);
@@ -942,6 +962,7 @@
   .home-card-eta .home-card-icon{ background:color-mix(in srgb, var(--accent) 18%, var(--surface2)); color:var(--accent); }
   .home-card-consum .home-card-icon{ background:color-mix(in srgb, var(--brass) 18%, var(--surface2)); color:var(--brass); }
   .home-card-fw .home-card-icon{ background:color-mix(in srgb, var(--ok) 18%, var(--surface2)); color:var(--ok); }
+  .home-card-fuel .home-card-icon{ background:color-mix(in srgb, var(--warn) 18%, var(--surface2)); color:var(--warn); }
   .home-footer{ margin-top:26px; text-align:center; font-size:11px; color:var(--text-dim); }
 
   /* ---------- Home screen ambient motion ----------
@@ -1669,6 +1690,12 @@
         </span>
         Freshwater Planner
       </button>
+      <button type="button" class="card home-card home-card-fuel" id="homeCardFuel">
+        <span class="home-card-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21h9"></path><path d="M6 21V8a2 2 0 0 1 2-2h3a2 2 0 0 1 2 2v13"></path><path d="M14 8h1a2 2 0 0 1 2 2v6a1.5 1.5 0 0 0 3 0V7l-2-2"></path></svg>
+        </span>
+        Fuel Planner
+      </button>
     </div>
 
     <p class="home-footer" id="homeFooter"></p>
@@ -1723,6 +1750,15 @@
     <div class="split-grid">
     <div class="split-col-main">
 
+    <!-- Straight (default, existing behavior) vs By Leg (per-leg) voyage —
+         the single switch the Consumption tab and Freshwater Planner both
+         read (state.voyageMode) rather than each owning their own. -->
+    <div class="loc-tabs consum-mode-toggle" id="voyageModeTabs">
+      <span class="consum-mode-thumb" aria-hidden="true"></span>
+      <button type="button" class="loc-tab" data-mode="straight">Straight</button>
+      <button type="button" class="loc-tab" data-mode="leg">By Leg</button>
+    </div>
+
     <!-- DEPARTURE -->
     <section class="card">
       <p class="nameplate">Departure <span class="rivet"></span></p>
@@ -1758,20 +1794,30 @@
       <div class="row-gap" style="margin-top:12px;">
         <div class="field-row">
           <div class="field">
-            <label for="dtg">Distance to go (nm)</label>
+            <label for="dtg" id="dtgLabel">Distance to go (nm)</label>
             <input type="number" id="dtg" inputmode="decimal" min="0" step="any" placeholder="0.0">
           </div>
-          <div class="field">
+          <div class="field" id="speedField">
             <label for="speed">Speed (kn)</label>
             <input type="number" id="speed" inputmode="decimal" min="0" step="any" placeholder="0.0">
           </div>
         </div>
-        <p class="req-note" id="legTotalNote" hidden></p>
+        <p class="req-note" id="legSpeedNote" hidden>Speed is set per leg below.</p>
       </div>
     </section>
 
-    <div id="altArrivalsList"></div>
-    <button type="button" class="link-btn" id="addAltArrivalBtn">+ Add alternative arrival port</button>
+    <!-- ROUTE LEGS (By Leg mode only) -->
+    <section class="card" id="routeLegsCard" hidden>
+      <p class="nameplate">Route Legs <span class="rivet"></span></p>
+      <p class="req-note" style="margin-top:-6px;">Breaks the voyage into segments (e.g. across an ECA boundary) — each with its own distance, and its own speed if it differs from this tab's planned speed.</p>
+      <div id="routeLegsList"></div>
+      <button type="button" class="link-btn" id="addLegBtn" style="margin-top:6px;">+ Add leg</button>
+    </section>
+
+    <div id="altArrivalsSection">
+      <div id="altArrivalsList"></div>
+      <button type="button" class="link-btn" id="addAltArrivalBtn">+ Add alternative arrival port</button>
+    </div>
 
     <!-- REQUIRED SPEED — PREMIUM: see setLocked(reqCard, ...) further down. -->
     <section class="card" id="reqCard">
@@ -1831,13 +1877,6 @@
     <div class="split-grid">
     <div class="split-col-main">
 
-    <!-- Straight (default, existing behavior) vs By Region (per-leg) projection -->
-    <div class="loc-tabs consum-mode-toggle" id="consumModeTabs">
-      <span class="consum-mode-thumb" aria-hidden="true"></span>
-      <button type="button" class="loc-tab" data-mode="straight">Straight</button>
-      <button type="button" class="loc-tab" data-mode="region">By Region</button>
-    </div>
-
     <div class="consum-info" id="consumInfo"></div>
 
     <div class="field" id="robRefWrap" hidden>
@@ -1845,19 +1884,12 @@
       <select id="robRefSelect"></select>
     </div>
 
-    <!-- ROUTE LEGS (By Region mode only) -->
-    <section class="card" id="routeLegsCard" hidden>
-      <p class="nameplate">Route Legs <span class="rivet"></span></p>
-      <p class="req-note" style="margin-top:-6px;">Breaks the voyage into segments (e.g. across an ECA boundary) — each with its own distance, and its own speed if it differs from the ETA tab's planned speed.</p>
-      <div id="routeLegsList"></div>
-      <button type="button" class="link-btn" id="addLegBtn" style="margin-top:6px;">+ Add leg</button>
-    </section>
-
     <div class="consum-grid">
 
     <!-- FUEL -->
     <section class="card consum-span2">
       <p class="nameplate">Bunker Fuel <select class="unit-select" id="fuelUnitSelect" aria-label="Bunker fuel unit"></select></p>
+      <button type="button" class="btn btn-accent open-planner-btn" id="fuelOpenPlannerBtn" style="margin-top:-4px; margin-bottom:10px;">Open Fuel Planner <span class="open-planner-arrow">&rarr;</span></button>
       <div class="consum-list-head">
         <span class="col-name"></span><span class="col-input" id="fuelRobLabel">ROB</span><span class="col-input" id="fuelPerDayLabel">Per day</span><span class="col-del"></span>
       </div>
@@ -1875,6 +1907,7 @@
     <!-- FRESH WATER -->
     <section class="card">
       <p class="nameplate">Fresh Water <select class="unit-select" id="fwUnitSelect" aria-label="Fresh water unit"></select></p>
+      <button type="button" class="btn btn-accent open-planner-btn" id="fwOpenPlannerBtn" style="margin-top:-4px; margin-bottom:10px;">Open Freshwater Planner <span class="open-planner-arrow">&rarr;</span></button>
       <div class="consum-row" style="padding-top:0; border-top:none;">
         <div class="field-row">
           <div class="field">
@@ -1946,7 +1979,7 @@
       </div>
     </section>
 
-    <!-- PROJECTED ROB SUMMARY (By Region mode only — replaces ROB Across Speed Range) -->
+    <!-- PROJECTED ROB SUMMARY (By Leg mode only — replaces ROB Across Speed Range) -->
     <section class="card card--result" id="regionRobSummaryCard" hidden>
       <p class="nameplate">
         <span class="nameplate-title-row">
@@ -2007,7 +2040,7 @@
     <div class="paywall-hero">
       <svg viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true"><path d="M12 2l2.6 6.6L22 10l-5.5 4.6L18 22l-6-3.6L6 22l1.5-7.4L2 10l7.4-1.4z"></path></svg>
       <h2>Consumption Pro</h2>
-      <p>Unlock the full ETA toolset, the Consumption Calculator, and the desktop app, once.</p>
+      <p>Unlock the full ETA toolset, the Consumption Calculator, the Freshwater &amp; Fuel Planners, and the desktop app, once.</p>
     </div>
 
     <!-- Free vs Pro comparison — rows mirror exactly what's gated in the
@@ -2023,7 +2056,9 @@
         <tr><td>ETA across speed range</td><td class="cmp-no">&ndash;</td><td class="cmp-yes">&#10003;</td></tr>
         <tr><td>Alternative arrival ports</td><td class="cmp-no">&ndash;</td><td class="cmp-yes">&#10003;</td></tr>
         <tr><td>Required speed</td><td class="cmp-no">&ndash;</td><td class="cmp-yes">&#10003;</td></tr>
-        <tr><td>Consumption Calculator (Straight &amp; By Region)</td><td class="cmp-no">&ndash;</td><td class="cmp-yes">&#10003;</td></tr>
+        <tr><td>Consumption Calculator (Straight &amp; By Leg)</td><td class="cmp-no">&ndash;</td><td class="cmp-yes">&#10003;</td></tr>
+        <tr><td>Freshwater Planner</td><td class="cmp-no">&ndash;</td><td class="cmp-yes">&#10003;</td></tr>
+        <tr><td>Fuel Planner</td><td class="cmp-no">&ndash;</td><td class="cmp-yes">&#10003;</td></tr>
         <tr><td>Desktop app download</td><td class="cmp-no">&ndash;</td><td class="cmp-yes">&#10003;</td></tr>
       </tbody>
     </table>
@@ -2107,16 +2142,7 @@
     <!-- VOYAGE INPUTS -->
     <section class="card">
       <p class="nameplate">Voyage Inputs <span class="rivet"></span></p>
-      <p class="req-note" style="margin-top:-6px;">Break the voyage into legs, same as Consumption's By Region mode — each with its own distance (and speed, if it differs from the ETA tab's planned speed).</p>
-      <div id="fwLegsList"></div>
-      <button type="button" class="link-btn" id="fwAddLegBtn" style="margin-top:6px;">+ Add leg</button>
-      <p class="req-note" id="fwLegTotalNote" style="margin-top:8px;"></p>
-      <div class="row-gap" style="margin-top:10px;">
-        <div class="field">
-          <label for="fwPortSelect">Reference port (max distance check)</label>
-          <select id="fwPortSelect"></select>
-        </div>
-      </div>
+      <p class="req-note" style="margin-top:-6px;" id="fwVoyageSummary"></p>
       <p class="consum-legrates-heading" style="margin-top:14px;">Freshwater Generator Start</p>
       <p class="req-note" id="fwGenDepartureNote" style="margin-top:-6px;"></p>
       <div class="row-gap">
@@ -2164,6 +2190,54 @@
     <section class="card card--result" id="fwResultsCard">
       <p class="nameplate">The plan: <span class="rivet"></span></p>
       <div id="fwResultsBody"></div>
+    </section>
+
+  </div>
+</div>
+
+<!-- FUEL PLANNER — same idea as the Freshwater Planner above (tanks + a
+     draw sequence, coordinated to the ETA tab's voyage), but fuel is never
+     produced onboard, so there's no generator-start/production half at
+     all — each tank simply drains, in its own grade's draw order. Fuel
+     grades themselves are NOT a separate list here — every tank just picks
+     one of the Consumption tab's own fuel types (state.consumption.fuels),
+     and this tool's default consumption rate per grade is that same
+     Consumption tab figure (Straight: perDay; By Leg: leg.fuelRates),
+     optionally overridden here. Reached only via its own Home card. -->
+<div id="fuelPlannerView" hidden>
+  <div class="full-view">
+    <div class="full-view-topbar">
+      <button class="icon-btn" id="fuelBackBtn" type="button" aria-label="Back">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"></path></svg>
+      </button>
+      <h1>Fuel Planner</h1>
+    </div>
+
+    <div class="loc-tabs" style="margin-top:-10px;">
+      <button type="button" class="loc-tab" id="fuelGotoEta">ETA tab</button>
+      <button type="button" class="loc-tab" id="fuelGotoConsumption">Consumption tab</button>
+    </div>
+
+    <p class="req-note" style="margin-top:-6px;">Track tank levels by fuel grade, and the order tanks of that grade are drawn from, to see each tank's ROB at arrival.</p>
+
+    <!-- TANKS -->
+    <section class="card">
+      <p class="nameplate">Tanks <select class="unit-select" id="fuelPlannerUnitSelect" aria-label="Fuel Planner unit"></select></p>
+      <div id="fuelTanksList"></div>
+      <button type="button" class="link-btn" id="fuelAddTankBtn" style="margin-top:6px;">+ Add tank</button>
+    </section>
+
+    <!-- RATE + DRAW SEQUENCE, grouped per fuel grade -->
+    <section class="card">
+      <p class="nameplate">Consumption Rate &amp; Draw Sequence <span class="rivet"></span></p>
+      <p class="req-note" style="margin-top:-6px;">Rate defaults to whatever's entered for that grade on the Consumption tab &mdash; override it here only if this planner should use a different figure. Draw order is which tank of that grade empties first.</p>
+      <div id="fuelTypeSections"></div>
+    </section>
+
+    <!-- SUMMARY -->
+    <section class="card card--result" id="fuelResultsCard">
+      <p class="nameplate">Summary <span class="rivet"></span></p>
+      <div id="fuelResultsBody"></div>
     </section>
 
   </div>
@@ -3086,13 +3160,17 @@
   // edits this port's speed directly.
   const defaultAltArrival = () => ({id: newItemId(), arr: defaultLoc(), distance: "", speed: state.speed, speedLinked: true});
 
-  // A "By Region" route leg — an independent segment of the voyage (e.g. an
+  // A "By Leg" route leg — an independent segment of the voyage (e.g. an
   // ECA zone) with its own distance and, optionally, its own speed (falls
   // back to the primary planned speed when blank). fuelRates/lubeRates are
   // maps keyed by the matching state.consumption.fuels/lubeOils item id, so
   // multiple fuel types can each have their own nonzero rate on the same leg
   // (main engine + gensets running different grades simultaneously).
-  const defaultRouteLeg = (label) => ({id: newItemId(), label: label||"", distance:"", speedOverride:"", fuelRates:{}, lubeRates:{}, fwCons:"", fwProd:""});
+  // fuelPlannerRates is the Fuel Planner's OPTIONAL per-leg override of
+  // fuelRates above — same state.consumption.fuels keys, empty string
+  // meaning "no override, use this leg's own fuelRates value" (see
+  // simulateFuelPlanner() below).
+  const defaultRouteLeg = (label, zone) => ({id: newItemId(), label: label||"", distance:"", speedOverride:"", zone: zone||"UTC+0", fuelRates:{}, lubeRates:{}, fuelPlannerRates:{}, fwCons:"", fwProd:""});
 
   // Freshwater Planner — deliberately independent of state.consumption.freshWater
   // above (a different tool answering a different question — generator-stop
@@ -3105,10 +3183,9 @@
     lowLimitOn: false, lowLimit: "",  // was "hypermist reserve" — now a general, enforced floor
     target: ""    // per-tank target ROB at arrival — replaces the old combined targetAtArrival
   });
-  // Mirrors defaultRouteLeg() (Consumption tab's By Region mode) but only
-  // carries what this tool needs to total up transit hours — no fuel/lube
-  // rate maps, those don't apply here.
-  const defaultFwLeg = (label) => ({id: newItemId(), label: label||"", distance:"", speedOverride:""});
+  // Mirrors defaultRouteLeg() (the shared voyage leg list, now owned by the
+  // ETA tab's Straight/By Leg mode toggle) — but this tool no longer keeps
+  // its own leg list at all; see totalVoyageHours() further down.
   const defaultFreshwaterPlanner = () => {
     const tanks = [defaultFwTank("FW Tank 1"), defaultFwTank("FW Tank 2")];
     const ids = tanks.map(t => t.id);
@@ -3116,10 +3193,29 @@
       tanks,
       unit: "m³",
       consPerDay: "", prodPerDay: "",
-      legs: [defaultFwLeg(""), defaultFwLeg("")],
       genDate: "", genTime: "", genZone: "UTC+0",
       prodSequence: ids.slice(), consSequence: ids.slice()
     };
+  };
+
+  // Fuel Planner — the fuel-grade-aware sibling of the Freshwater Planner
+  // above. Fuel is never produced onboard, so there's no fill/production
+  // side at all here — just a flat list of tanks, each one assigned to a
+  // fuel grade. Grades themselves are NOT owned here: every tank just picks
+  // one of the Consumption tab's own fuel types (state.consumption.fuels),
+  // so this tool never duplicates that list — see normalizeFuelPlanner()
+  // below for how a tank's grade and each grade's draw order self-heal
+  // against it. No per-tank target either — this tool now only answers
+  // "what's each tank's ROB at arrival," not "hit this number."
+  const defaultFuelTank = (name) => ({
+    id: newItemId(), name: name||"", capacity: "", rob: "",
+    lowLimitOn: false, lowLimit: "", fuelTypeId: ""
+  });
+  const defaultFuelPlanner = () => {
+    const firstFuelId = defaultFuels()[0].id;
+    const tank = defaultFuelTank("Fuel Tank 1");
+    tank.fuelTypeId = firstFuelId;
+    return { tanks: [tank], sequenceByType: {[firstFuelId]: [tank.id]}, rateOverrides: {}, unit: "MT" };
   };
 
   let state = {
@@ -3134,16 +3230,16 @@
     robReferencePort: "primary",
     etaSpeedRangePort: "primary",
     reqSpeedPort: "primary",
-    fwPlannerPort: "primary",
     etaSpeedRangeCollapsed: false,
     robSpeedRangeCollapsed: false,
     regionRobSummaryCollapsed: false,
     // Per-category show/hide inside "ROB Across Speed Range" (Straight mode)
     // — independent of robSpeedRangeCollapsed above, which hides the whole card.
     robVisible: {fuels:true, freshWater:true, lubeOils:true},
-    consumptionMode: "straight",
+    voyageMode: "straight",
     routeLegs: [],
-    freshwaterPlanner: defaultFreshwaterPlanner()
+    freshwaterPlanner: defaultFreshwaterPlanner(),
+    fuelPlanner: defaultFuelPlanner()
   };
 
   const STORE_KEY = "bridge-eta-state-v1";
@@ -3168,14 +3264,22 @@
       };
     }) : [];
   }
-  // Keeps every leg's fuelRates/lubeRates in sync with the current fuel/lube
-  // type lists — adds a "" entry for any type a leg doesn't have a key for
-  // yet, and drops keys for types that no longer exist. Called after every
-  // fuel/lube type add or delete, and once from normalizeRouteLegs() below.
+  // Keeps every leg's fuelRates/lubeRates/fuelPlannerRates in sync with the
+  // current fuel/lube type lists — adds a "" entry for any type a leg
+  // doesn't have a key for yet, and drops keys for types that no longer
+  // exist. fuelPlannerRates rides along on the same fuel keys as fuelRates
+  // (it's the Fuel Planner's optional override of that same per-leg rate —
+  // see defaultRouteLeg() above), so it needs no separate sync of its own.
+  // Called after every fuel/lube type add or delete, and once from
+  // normalizeRouteLegs() below.
   function syncLegRateKeys(legs){
     (legs || state.routeLegs).forEach(leg => {
-      state.consumption.fuels.forEach(f => { if(!(f.id in leg.fuelRates)) leg.fuelRates[f.id] = ""; });
+      state.consumption.fuels.forEach(f => {
+        if(!(f.id in leg.fuelRates)) leg.fuelRates[f.id] = "";
+        if(!(f.id in leg.fuelPlannerRates)) leg.fuelPlannerRates[f.id] = "";
+      });
       Object.keys(leg.fuelRates).forEach(k => { if(!state.consumption.fuels.some(f => f.id===k)) delete leg.fuelRates[k]; });
+      Object.keys(leg.fuelPlannerRates).forEach(k => { if(!state.consumption.fuels.some(f => f.id===k)) delete leg.fuelPlannerRates[k]; });
       state.consumption.lubeOils.forEach(o => { if(!(o.id in leg.lubeRates)) leg.lubeRates[o.id] = ""; });
       Object.keys(leg.lubeRates).forEach(k => { if(!state.consumption.lubeOils.some(o => o.id===k)) delete leg.lubeRates[k]; });
     });
@@ -3189,8 +3293,10 @@
       label: l.label || "",
       distance: l.distance || "",
       speedOverride: l.speedOverride || "",
+      zone: l.zone || "UTC+0",
       fuelRates: (l.fuelRates && typeof l.fuelRates === "object") ? Object.assign({}, l.fuelRates) : {},
       lubeRates: (l.lubeRates && typeof l.lubeRates === "object") ? Object.assign({}, l.lubeRates) : {},
+      fuelPlannerRates: (l.fuelPlannerRates && typeof l.fuelPlannerRates === "object") ? Object.assign({}, l.fuelPlannerRates) : {},
       fwCons: l.fwCons || "",
       fwProd: l.fwProd || ""
     })) : [];
@@ -3214,12 +3320,6 @@
       lowLimit: t.lowLimit || t.alarmThreshold || "",
       target: t.target || ""
     })) : [defaultFwTank("FW Tank 1"), defaultFwTank("FW Tank 2")];
-    const legs = (Array.isArray(src.legs) && src.legs.length) ? src.legs.map(l => ({
-      id: l.id || newItemId(),
-      label: l.label || "",
-      distance: l.distance || "",
-      speedOverride: l.speedOverride || ""
-    })) : [defaultFwLeg(""), defaultFwLeg("")];
     // Every tank participates in both fill and draw now — no per-tank role
     // to filter on. This just keeps a saved order limited to tanks that
     // still exist, and appends any tank missing from it (newly added, or
@@ -3235,12 +3335,55 @@
       tanks,
       unit: src.unit || "m³",
       consPerDay: src.consPerDay || "", prodPerDay: src.prodPerDay || "",
-      legs,
       genDate: src.genDate || "", genTime: src.genTime || "",
       genZone: src.genZone || "UTC+0",
       prodSequence: cleanSeq(src.prodSequence),
       consSequence: cleanSeq(src.consSequence)
     };
+  }
+  // Mirrors normalizeFreshwaterPlanner() above, one level deeper — a list of
+  // independent fuel grades, each with its own tank list + draw sequence,
+  // since fuel grades never mix (unlike fresh water's single shared pool).
+  // Must run after state.consumption is already set, same reason
+  // normalizeRouteLegs() does — every tank's grade, and each grade's draw
+  // order, self-heal against the CURRENT state.consumption.fuels list here.
+  function normalizeFuelPlanner(raw){
+    const src = (raw && typeof raw==="object") ? raw : {};
+    const tanks = (Array.isArray(src.tanks) && src.tanks.length) ? src.tanks.map(t => ({
+      id: t.id || newItemId(),
+      name: t.name || "",
+      capacity: t.capacity || "",
+      rob: t.rob || "",
+      lowLimitOn: !!t.lowLimitOn,
+      lowLimit: t.lowLimit || "",
+      fuelTypeId: t.fuelTypeId || ""
+    })) : [defaultFuelTank("Fuel Tank 1")];
+    // A tank whose grade is missing or points at a grade since deleted on
+    // the Consumption tab falls back to the first grade still available.
+    tanks.forEach(t => {
+      if(!state.consumption.fuels.some(f => f.id === t.fuelTypeId)){
+        t.fuelTypeId = state.consumption.fuels.length ? state.consumption.fuels[0].id : "";
+      }
+    });
+    // One draw-order list per grade — self-healing, same philosophy as
+    // normalizeFreshwaterPlanner()'s cleanSeq(): a saved order is limited to
+    // tanks that still exist AND still belong to that grade; any tank newly
+    // assigned to (or missing from) that grade's order is appended at the end.
+    const srcSeq = (src.sequenceByType && typeof src.sequenceByType === "object") ? src.sequenceByType : {};
+    const sequenceByType = {};
+    state.consumption.fuels.forEach(f => {
+      const tanksOfType = tanks.filter(t => t.fuelTypeId === f.id).map(t => t.id);
+      const saved = Array.isArray(srcSeq[f.id]) ? srcSeq[f.id] : [];
+      const out = saved.filter(id => tanksOfType.includes(id));
+      tanksOfType.forEach(id => { if(!out.includes(id)) out.push(id); });
+      sequenceByType[f.id] = out;
+    });
+    // rateOverrides mirrors leg.fuelPlannerRates' own sync (syncLegRateKeys
+    // above) — one optional override slot per Consumption-tab fuel grade.
+    const rateOverrides = (src.rateOverrides && typeof src.rateOverrides === "object") ? Object.assign({}, src.rateOverrides) : {};
+    state.consumption.fuels.forEach(f => { if(!(f.id in rateOverrides)) rateOverrides[f.id] = ""; });
+    Object.keys(rateOverrides).forEach(k => { if(!state.consumption.fuels.some(f => f.id===k)) delete rateOverrides[k]; });
+    return { tanks, sequenceByType, rateOverrides, unit: src.unit || "MT" };
   }
   function loadState(){
     try{
@@ -3256,8 +3399,11 @@
       state.robReferencePort = parsed.robReferencePort || "primary";
       state.etaSpeedRangePort = parsed.etaSpeedRangePort || "primary";
       state.reqSpeedPort = parsed.reqSpeedPort || "primary";
-      state.fwPlannerPort = parsed.fwPlannerPort || "primary";
-      state.consumptionMode = parsed.consumptionMode === "region" ? "region" : "straight";
+      // "leg" was the old internal value (back when this toggle lived on
+      // the Consumption tab) for what's now "leg" — reads an already-saved
+      // install's state into the new field/value so nobody's mode silently
+      // resets on this update.
+      state.voyageMode = (parsed.voyageMode === "leg" || parsed.consumptionMode === "region") ? "leg" : "straight";
       state.robVisible = Object.assign({fuels:true, freshWater:true, lubeOils:true}, parsed.robVisible||{});
       const pc = parsed.consumption || {};
       state.consumption = {
@@ -3268,6 +3414,7 @@
       };
       state.routeLegs = normalizeRouteLegs(parsed.routeLegs);
       state.freshwaterPlanner = normalizeFreshwaterPlanner(parsed.freshwaterPlanner);
+      state.fuelPlanner = normalizeFuelPlanner(parsed.fuelPlanner);
     }catch(e){}
   }
 
@@ -3368,6 +3515,19 @@
       return {zone: loc.tzOverride, label: auto.label, kind: auto.kind, lat: auto.lat, lon: auto.lon, overridden:true};
     }
     return auto;
+  }
+  // The Arrival card's current zone, as a fixed "UTC+n" OFFSET_OPTIONS
+  // value — used to default a newly-created leg's own timezone field to
+  // something sensible (a real port's zone isn't itself an OFFSET_OPTIONS
+  // value, e.g. "America/Sao_Paulo", so this resolves its current offset
+  // at departure, same approach zoneOffsetLabel() uses for display).
+  function currentArrOffset(){
+    const zi = getZoneInfo(state.arr);
+    if(!zi) return "UTC+0";
+    if(zi.kind==="manual" || zi.overridden) return zi.zone;
+    const dep = departureInstant();
+    const dt = (dep ? dep.instant.toUTC() : DT.utc()).setZone(zi.zone);
+    return fmtOffsetMinutes(dt.offset);
   }
 
   // Display-only: the app's internal fixed-offset zone identifiers are
@@ -3606,7 +3766,7 @@
   document.getElementById("swapBtn").addEventListener("click", () => {
     const tmp = state.dep; state.dep = state.arr; state.arr = tmp;
     renderLocationBlock(depLocEl, state.dep, () => { saveState(); render(); });
-    renderLocationBlock(arrLocEl, state.arr, () => { saveState(); populateRobRefOptions(); render(); });
+    renderLocationBlock(arrLocEl, state.arr, () => { saveState(); populateRobRefOptions(); render(); if(state.voyageMode==="leg") updateRouteLegPreviews(); });
     saveState(); populateRobRefOptions(); render();
   });
 
@@ -3762,7 +3922,7 @@
   document.getElementById("nowBtn").addEventListener("click", setNow);
   depDate.addEventListener("input", () => { state.dateStr = depDate.value; saveState(); render(); });
   depTime.addEventListener("input", () => { state.timeStr = depTime.value; saveState(); render(); });
-  dtgInput.addEventListener("input", () => { state.distance = dtgInput.value; saveState(); render(); });
+  dtgInput.addEventListener("input", () => { state.distance = dtgInput.value; saveState(); render(); if(state.voyageMode==="leg") updateRouteLegPreviews(); });
   speedInput.addEventListener("input", () => {
     state.speed = speedInput.value;
     state.altArrivals.forEach(alt => { if(alt.speedLinked) alt.speed = state.speed; });
@@ -3811,6 +3971,32 @@
     return {dep, distance, speed, hours, etaUTC};
   }
   function primaryETA(){ return calcETAFor(state.distance, state.speed); }
+  // The one shared "how long is this voyage" answer — Straight mode uses
+  // the flat distance/speed pair above, By Leg mode sums state.routeLegs
+  // (regionTotalHours(), defined further down with the rest of the leg
+  // machinery — safe to call here, function declarations hoist). Used by
+  // the Freshwater Planner instead of it keeping its own leg total.
+  function totalVoyageHours(){
+    if(state.voyageMode === "leg") return regionTotalHours();
+    const calc = primaryETA();
+    return calc ? calc.hours : null;
+  }
+  // Shaped exactly like calcETAFor()'s return value so it drops into the
+  // same downstream code (renderResult(), requiredSpeedCalc(), speedTable())
+  // with minimal branching — distance/speed here are the SUM of every leg's
+  // distance and the resulting overall AVERAGE speed (not broken down leg
+  // by leg; that granularity lives in the per-leg breakdown instead).
+  function legModeCalc(){
+    const dep = departureInstant();
+    const hours = regionTotalHours();
+    if(!dep || hours==null) return null;
+    let distance = 0;
+    state.routeLegs.forEach(leg => { const d = parseFloat(leg.distance); if(isFinite(d)) distance += d; });
+    if(distance<=0) return null;
+    const speed = distance/hours;
+    const etaUTC = dep.instant.toUTC().plus({hours});
+    return {dep, distance, speed, hours, etaUTC};
+  }
 
   // Which port's passage the Consumption tab should project fuel/water/lube
   // against — the primary arrival, or one of the alternative ports if any
@@ -3838,15 +4024,6 @@
   function getRobReferenceLabel(){
     if(!state.altArrivals.length) return null;
     return getRobReferencePortLabel();
-  }
-  // The distance figure behind whichever port getReferenceCalc() is currently
-  // using — By Region's per-leg distance cap needs just the number.
-  function getRobReferenceDistance(){
-    if(state.robReferencePort && state.robReferencePort !== "primary"){
-      const alt = state.altArrivals.find(a => a.id === state.robReferencePort);
-      if(alt) return alt.distance;
-    }
-    return state.distance;
   }
 
   function fmtDuration(hoursFloat){
@@ -3884,7 +4061,16 @@
   // forced to match whichever port the ETA card's own switcher has focused.
   function requiredSpeedCalc(){
     const dep = departureInstant();
-    const focus = getReqFocusPort();
+    // By Leg mode has one voyage, not a set of focusable ports — use the
+    // leg total directly instead of getReqFocusPort()'s port switcher.
+    const isLeg = state.voyageMode === "leg";
+    let focus;
+    if(isLeg){
+      const lc = legModeCalc();
+      focus = {distance: lc ? lc.distance : null, speed: lc ? lc.speed : null, arrZI: getZoneInfo(state.arr), label: "By Leg"};
+    } else {
+      focus = getReqFocusPort();
+    }
     const distance = parseFloat(focus.distance);
     if(!dep || !isFinite(distance) || distance<=0) return {status:"incomplete"};
     if(!state.reqDate || !state.reqTime) return {status:"incomplete"};
@@ -4025,16 +4211,20 @@
       refocus = {id: active.id, start: active.selectionStart, end: active.selectionEnd};
     }
 
-    const focus = getFocusPort();
-    const focusAlt = focus.alt;
-    const calc = focusAlt ? calcETAFor(focusAlt.distance, focusAlt.speed) : primaryETA();
-    const focusArrZI = focus.arrZI;
-    const focusPortLabel = focus.label;
-    etaCardTitle.textContent = "Estimated Time of Arrival — "+focusPortLabel;
+    const isLeg = state.voyageMode === "leg";
+    const focus = isLeg ? null : getFocusPort();
+    const focusAlt = isLeg ? null : focus.alt;
+    const calc = isLeg ? legModeCalc() : (focusAlt ? calcETAFor(focusAlt.distance, focusAlt.speed) : primaryETA());
+    const focusArrZI = isLeg ? getZoneInfo(state.arr) : focus.arrZI;
+    const focusPortLabel = isLeg ? "By Leg" : focus.label;
+    etaCardTitle.textContent = isLeg ? "Estimated Time of Arrival" : "Estimated Time of Arrival — "+focusPortLabel;
     lastEtaBBPortLabel = focusPortLabel;
 
+    // Alternative arrival ports don't apply to a leg-based route (it's one
+    // specific path, not a set of "what if I divert elsewhere" candidates)
+    // — no switcher while By Leg mode is active.
     let switchHtml = "";
-    if(state.altArrivals.length){
+    if(!isLeg && state.altArrivals.length){
       switchHtml = '<div class="port-switch">'+
         '<button type="button" class="port-switch-btn'+(!focusAlt?" active":"")+'" data-port-switch="primary">Primary</button>'+
         state.altArrivals.map((a,i) => '<button type="button" class="port-switch-btn'+(state.etaSpeedRangePort===a.id?" active":"")+'" data-port-switch="'+a.id+'">Alt '+(i+1)+'</button>').join("")+
@@ -4109,17 +4299,38 @@
       // working port — or just setting a variance for later — stays possible.
       resultBody.innerHTML =
         '<p class="result-empty">'+
-        (focusAlt ? "Enter this port&rsquo;s distance and speed to see its ETA."
+        (isLeg ? "Enter a departure location &amp; time and at least one leg&rsquo;s distance to see the ETA."
+              : focusAlt ? "Enter this port&rsquo;s distance and speed to see its ETA."
                   : "Enter a departure location &amp; time, distance to go and speed to see the ETA.")+
         '</p>'+
         switchHtml+
-        speedRangeSectionHtml(rangeControlsHtml+'<div id="varTableWrap">'+varTableWrapHtml([], focusArrZI)+'</div>');
+        (isLeg ? "" : speedRangeSectionHtml(rangeControlsHtml+'<div id="varTableWrap">'+varTableWrapHtml([], focusArrZI)+'</div>'));
       lastEtaBBText = "— enter voyage details —";
       lastEtaBBUtcText = "";
       if(resultCardEl) resultCardEl.classList.remove("has-value");
       finish();
       return;
     }
+
+    // By Leg mode: legs adding up to more than the Total Distance you set
+    // on the Arrival card is treated as a real error, not just a heads-up
+    // — the ETA can't be trusted until it's fixed, so it isn't shown.
+    // updateRouteLegPreviews() already flags which leg pushed it over
+    // in-context; this is the same check enforced at the result itself.
+    const totalDistance = parseFloat(state.distance);
+    if(isLeg && isFinite(totalDistance) && totalDistance>0 && calc.distance > totalDistance + 1e-9){
+      const overage = calc.distance - totalDistance;
+      resultBody.innerHTML =
+        '<p class="req-note danger">Legs total '+calc.distance.toLocaleString()+' nm, which exceeds the Total Distance you entered ('+
+        totalDistance.toLocaleString()+' nm) by '+overage.toLocaleString(undefined,{maximumFractionDigits:1})+
+        ' nm. Reduce a leg&rsquo;s distance below to see the ETA.</p>';
+      lastEtaBBText = "— legs exceed total distance —";
+      lastEtaBBUtcText = "";
+      if(resultCardEl) resultCardEl.classList.remove("has-value");
+      finish();
+      return;
+    }
+
     const etaArr = focusArrZI ? calc.etaUTC.setZone(focusArrZI.zone) : null;
 
     let html = "";
@@ -4139,10 +4350,19 @@
       lastEtaBBUtcText = ""; // already showing GMT above — no redundant second line
     }
 
+    if(isLeg){
+      html += '<p class="consum-legrates-heading" style="margin-top:14px;">ETA Per Leg</p>';
+      html += legEtaBreakdownHTML(legEtaRows(), focusArrZI);
+    }
+
     html += '<div class="stat-grid">'+
       '<div class="stat-tile"><div class="k">Steaming time</div><div class="v">'+fmtDuration(calc.hours)+'</div></div>'+
       '<div class="stat-tile"><div class="k">Distance</div><div class="v">'+calc.distance.toLocaleString()+' nm</div></div>'+
-      '<div class="stat-tile"><div class="k">Speed</div><div class="v">'+calc.speed.toFixed(1)+' kn</div></div>'+
+      // By Leg mode's speed is a derived average (total distance / total
+      // steaming time), not something you typed — shown to 2 decimals so
+      // a real (if small) difference from any one leg's own speed doesn't
+      // get lost to 1-decimal rounding and look like it was ignored.
+      '<div class="stat-tile"><div class="k">Speed</div><div class="v">'+calc.speed.toFixed(isLeg?2:1)+' kn</div></div>'+
     '</div>';
 
     // Port switcher replaces the old plain Departure LT / Arrival UTC
@@ -4150,11 +4370,19 @@
     // right under the main ETA figure (only shown when alt ports exist).
     html += switchHtml;
 
-    const rows = speedTable(calc);
-    const sectionBody = rangeControlsHtml + '<div id="varTableWrap">'+varTableWrapHtml(rows, focusArrZI)+'</div>';
-    html += speedRangeSectionHtml(sectionBody);
-    resultBody.innerHTML = html;
-    populateVarTbody(rows, calc, focusArrZI);
+    // ETA Across Speed Range assumes one flat planned speed — By Leg mode
+    // has a derived average instead (already shown in the stat-grid
+    // above), so the section doesn't apply and is left out entirely
+    // rather than varying that average around an arbitrary interval.
+    if(!isLeg){
+      const rows = speedTable(calc);
+      const sectionBody = rangeControlsHtml + '<div id="varTableWrap">'+varTableWrapHtml(rows, focusArrZI)+'</div>';
+      html += speedRangeSectionHtml(sectionBody);
+      resultBody.innerHTML = html;
+      populateVarTbody(rows, calc, focusArrZI);
+    } else {
+      resultBody.innerHTML = html;
+    }
     // Gold border only once there's a real calculated result to look at —
     // matches the same treatment on the Consumption tab's ROB summary
     // cards (see renderConsumInfo()), all sharing .card--result. The
@@ -4182,11 +4410,14 @@
     // both reflect that independent focus, defaulting to the primary
     // arrival port. Updated before the enabled check below so it stays
     // correct even while the section is collapsed.
-    const reqFocus = getReqFocusPort();
-    document.getElementById("reqNameplate").textContent = "Required Speed — "+reqFocus.label;
+    const isLeg = state.voyageMode === "leg";
+    document.getElementById("reqNameplate").textContent = "Required Speed"+(isLeg ? "" : " — "+getReqFocusPort().label);
     const switchWrap = document.getElementById("reqPortSwitchWrap");
     if(switchWrap){
-      if(state.altArrivals.length){
+      // No port to switch between in By Leg mode — one voyage, same reason
+      // the ETA card's own switcher hides too (see renderResult()).
+      if(!isLeg && state.altArrivals.length){
+        const reqFocus = getReqFocusPort();
         switchWrap.innerHTML = '<div class="port-switch">'+
           '<button type="button" class="port-switch-btn'+(!reqFocus.alt?" active":"")+'" data-port-switch="primary">Primary</button>'+
           state.altArrivals.map((a,i) => '<button type="button" class="port-switch-btn'+(state.reqSpeedPort===a.id?" active":"")+'" data-port-switch="'+a.id+'">Alt '+(i+1)+'</button>').join("")+
@@ -4241,13 +4472,16 @@
     return calc ? calc.hours/24 : null;
   }
 
-  // ---- "By Region" mode: per-leg time/consumption math (additive — none of
+  // ---- "By Leg" mode: per-leg time/consumption math (additive — none of
   // the Straight-mode functions above are touched by this). ----
-  // Hours for one leg: its own distance over its own speed override, or the
-  // ETA tab's planned speed when no override is given. null if incomplete.
+  // Hours for one leg: its own distance over its own speed — no fallback
+  // to state.speed, since By Leg mode hides that field entirely now and a
+  // blank leg speed silently reusing a stale hidden value would be more
+  // confusing than just treating that leg as incomplete (same as any
+  // other blank required field elsewhere in this app).
   function regionLegHours(leg){
     const distance = parseFloat(leg.distance);
-    const speed = parseFloat(leg.speedOverride) || parseFloat(state.speed);
+    const speed = parseFloat(leg.speedOverride);
     if(!isFinite(distance) || distance<=0 || !isFinite(speed) || speed<=0) return null;
     return distance/speed;
   }
@@ -4324,6 +4558,42 @@
     if(!isFinite(n)) return "—";
     return n.toLocaleString(undefined, {minimumFractionDigits:1, maximumFractionDigits:1});
   }
+  // ETA tab's own per-leg breakdown, mirroring regionCumulativeRob() above
+  // but accumulating hours (to an arrival instant) instead of ROB.
+  function legEtaRows(){
+    const dep = departureInstant();
+    if(!dep) return [];
+    let cumHours = 0;
+    return state.routeLegs.map((leg, i) => {
+      const h = regionLegHours(leg);
+      if(h!=null) cumHours += h;
+      // The last leg has no zone field of its own — null here means
+      // "use the Arrival card's own zone instead" (see legEtaBreakdownHTML()
+      // and updateRouteLegPreviews(), the two places that read this).
+      const isLast = i === state.routeLegs.length-1;
+      return {legIndex:i, legHours:h, etaUTC: dep.instant.toUTC().plus({hours:cumHours}), zone: isLast ? null : leg.zone};
+    });
+  }
+  // Mirrors legRobBreakdownHTML()'s shape exactly — one row per leg, last
+  // one labeled "Estimated Time of Arrival" instead of "ROB at Arrival Port".
+  // Every row but the last converts using its own leg.zone; the last row
+  // (r.zone===null) uses the Arrival card's own zone (focusArrZI), same as
+  // the big "Arrival local time" headline above this breakdown.
+  function legEtaBreakdownHTML(rows, focusArrZI){
+    if(!rows.length) return "";
+    return '<div class="leg-rob-breakdown">'+
+      rows.map((r,i) => {
+        const label = i===rows.length-1 ? "Estimated Time of Arrival" : "ETA in "+ordinal(r.legIndex+1)+" Leg";
+        const local = r.zone ? r.etaUTC.setZone(r.zone) : (focusArrZI ? r.etaUTC.setZone(focusArrZI.zone) : null);
+        const offsetLabel = r.zone ? displayOffset(r.zone) : (focusArrZI ? zoneOffsetLabel(focusArrZI, r.etaUTC) : "");
+        const mainLine = local ? local.toFormat("dd LLL, HH:mm")+" LT" : r.etaUTC.toFormat("dd LLL, HH:mm")+" GMT";
+        const subParts = [];
+        if(r.legHours!=null) subParts.push("Leg time "+fmtDuration(r.legHours));
+        if(local) subParts.push((r.zone?"":"Arrival zone &middot; ")+"GMT "+r.etaUTC.toFormat("dd LLL, HH:mm")+" ("+offsetLabel+")");
+        return '<div class="leg-rob-item"><span>'+label+'</span><b>'+mainLine+'</b><div class="leg-rob-used">'+(subParts.join(" &middot; ")||"—")+'</div></div>';
+      }).join("")+
+    '</div>';
+  }
   // "1st", "2nd", "3rd", "4th", "11th"... — used to label route legs positionally.
   function ordinal(n){
     const s = ["th","st","nd","rd"], v = n%100;
@@ -4344,7 +4614,7 @@
   // speed in the same planned-speed ± variance range, since a different speed
   // changes passage time (and so total consumption) even at the same daily rate.
   function speedRobTableHTML(robVal, dailyBurn, title, unit){
-    if(state.consumptionMode==="region") return ""; // replaced by Projected ROB Summary in this mode
+    if(state.voyageMode==="leg") return ""; // replaced by Projected ROB Summary in this mode
     const calc = getReferenceCalc();
     if(!calc || !isFinite(robVal)) return "";
     const rows = speedTable(calc);
@@ -4368,7 +4638,7 @@
   // every item in that list as its own column — instead of a separate small
   // table per item, to match the ETA tab's single "ETA across speed range" table.
   function consumableSpeedSummaryHTML(listKey, title){
-    if(state.consumptionMode==="region") return ""; // replaced by Projected ROB Summary in this mode
+    if(state.voyageMode==="leg") return ""; // replaced by Projected ROB Summary in this mode
     const calc = getReferenceCalc();
     if(!calc) return "";
     const rows = speedTable(calc);
@@ -4431,7 +4701,7 @@
   function legRateMapFor(listKey){ return listKey==="fuels" ? "fuelRates" : "lubeRates"; }
 
   function renderConsumableList(container, listKey){
-    const isRegion = state.consumptionMode === "region";
+    const isLeg = state.voyageMode === "leg";
     container.innerHTML = "";
     consumRowRefreshers = consumRowRefreshers.filter(r => r.listKey !== listKey);
     state.consumption[listKey].forEach(item => {
@@ -4441,11 +4711,11 @@
         '<div class="consum-row-line">'+
           '<span class="name col-name"></span>'+
           '<input type="number" class="c-rob col-input" inputmode="decimal" min="0" step="any" placeholder="0.0">'+
-          (isRegion ? '<span class="col-input"></span>' : '<input type="number" class="c-perday col-input" inputmode="decimal" min="0" step="any" placeholder="0.0">')+
+          (isLeg ? '<span class="col-input"></span>' : '<input type="number" class="c-perday col-input" inputmode="decimal" min="0" step="any" placeholder="0.0">')+
           '<span class="col-del">'+(item.removable ? '<button type="button" class="consum-del" aria-label="Remove">'+TRASH_SVG+'</button>' : '')+'</span>'+
         '</div>'+
-        (isRegion ? '<div class="consum-legrates"></div>' : '')+
-        (isRegion ? '<div class="leg-rob-slot"></div>' : '')+
+        (isLeg ? '<div class="consum-legrates"></div>' : '')+
+        (isLeg ? '<div class="leg-rob-slot"></div>' : '')+
         '<div class="consum-result"><span class="c-result-text">—</span><span class="consum-chip pending c-chip">—</span></div>'+
         '<div class="req-note danger c-warning" hidden></div>';
       row.querySelector(".name").textContent = item.name;
@@ -4459,7 +4729,7 @@
       if(perDayEl) perDayEl.value = item.perDay;
 
       const rateMapKey = legRateMapFor(listKey);
-      if(isRegion){
+      if(isLeg){
         const legratesEl = row.querySelector(".consum-legrates");
         state.routeLegs.forEach((leg, i) => {
           const wrap = document.createElement("div");
@@ -4479,7 +4749,7 @@
 
       function refresh(){
         let projected = null, burnRate = 0;
-        if(isRegion){
+        if(isLeg){
           const rob = parseFloat(robEl.value);
           const totalHours = regionTotalHours();
           if(isFinite(rob) && totalHours!=null && state.routeLegs.length){
@@ -4494,15 +4764,16 @@
           }
         } else {
           const days = daysToETA();
-          const rob = parseFloat(robEl.value), perDay = parseFloat(perDayEl.value);
-          if(isFinite(rob) && isFinite(perDay) && days!=null) projected = rob - perDay*days;
-          burnRate = isFinite(perDay) ? perDay : 0;
+          const rob = parseFloat(robEl.value);
+          const perDay = parseFloat(perDayEl.value) || 0; // blank rate = not currently being drawn, not "unknown"
+          if(isFinite(rob) && days!=null) projected = rob - perDay*days;
+          burnRate = perDay;
         }
         const status = consumableStatus(projected, burnRate);
         // In region mode the per-leg breakdown above replaces this single
         // line once there's something to show it — this text stays only as
         // the "not ready yet" guidance.
-        resultText.textContent = projected!=null && isRegion ? "" : (projected==null ? "Enter ROB / per-day — complete ETA tab" : "Projected ROB at ETA: "+fmtQty(projected)+" "+unitFor(listKey));
+        resultText.textContent = projected!=null && isLeg ? "" : (projected==null ? "Enter ROB / per-day — complete ETA tab" : "Projected ROB at ETA: "+fmtQty(projected)+" "+unitFor(listKey));
         resultText.className = projected==null ? "c-result-text" : "c-result-text "+(projected<0 ? "danger-text" : "brass-text");
         chip.textContent = STATUS_LABEL[status];
         chip.className = "consum-chip c-chip "+status;
@@ -4518,6 +4789,10 @@
       if(delBtn) delBtn.addEventListener("click", () => {
         state.consumption[listKey] = state.consumption[listKey].filter(x => x.id !== item.id);
         syncLegRateKeys();
+        // Fuel Planner tanks/rate-overrides key directly off state.consumption.fuels
+        // (see normalizeFuelPlanner()) — re-sync so a deleted grade's tanks fall
+        // back cleanly instead of pointing at a grade that no longer exists.
+        if(listKey==="fuels") state.fuelPlanner = normalizeFuelPlanner(state.fuelPlanner);
         saveState();
         renderConsumableList(container, listKey);
       });
@@ -4546,6 +4821,7 @@
       if(!name){ nameInput.focus(); return; }
       state.consumption[listKey].push({id:newItemId(), name, rob:"", perDay:"", removable:true});
       syncLegRateKeys();
+      if(listKey==="fuels") state.fuelPlanner = normalizeFuelPlanner(state.fuelPlanner);
       saveState();
       form.hidden = true;
       renderConsumableList(containerEl, listKey);
@@ -4590,11 +4866,11 @@
     });
   }
   function refreshFreshWater(){
-    const isRegion = state.consumptionMode === "region";
+    const isLeg = state.voyageMode === "leg";
     const rob = parseFloat(fwRob.value);
     const fwUnit = state.consumption.freshWater.unit;
     let projected = null, burnRate = 0;
-    if(isRegion){
+    if(isLeg){
       const totalHours = regionTotalHours();
       if(isFinite(rob) && totalHours!=null && state.routeLegs.length){
         const used = regionTotalUsed(leg => leg.fwCons);
@@ -4615,13 +4891,13 @@
       burnRate = cons - prod;
     }
     const status = consumableStatus(projected, burnRate);
-    fwResultText.textContent = projected!=null && isRegion ? "" : (projected==null ? "Enter ROB — complete ETA tab" : "Projected ROB at ETA: "+fmtQty(projected)+" "+fwUnit);
+    fwResultText.textContent = projected!=null && isLeg ? "" : (projected==null ? "Enter ROB — complete ETA tab" : "Projected ROB at ETA: "+fmtQty(projected)+" "+fwUnit);
     fwResultText.className = projected==null ? "" : (projected<0 ? "danger-text" : "brass-text");
     fwChip.textContent = STATUS_LABEL[status];
     fwChip.className = "consum-chip "+status;
     fwWarning.hidden = !(projected!=null && projected<0);
     fwWarning.textContent = "⚠ Not enough fresh water — projected to run out before arrival";
-    fwSpeedSummary.innerHTML = (!isRegion && isFinite(rob)) ? speedRobTableHTML(rob, (parseFloat(fwCons.value)||0) - (parseFloat(fwProd.value)||0), "Fresh Water", fwUnit) : "";
+    fwSpeedSummary.innerHTML = (!isLeg && isFinite(rob)) ? speedRobTableHTML(rob, (parseFloat(fwCons.value)||0) - (parseFloat(fwProd.value)||0), "Fresh Water", fwUnit) : "";
     refreshRobBottomBar();
     refreshRegionRobSummary();
   }
@@ -4708,7 +4984,7 @@
     });
   });
 
-  // Projected ROB Summary (By Region mode) — same collapsible pattern.
+  // Projected ROB Summary (By Leg mode) — same collapsible pattern.
   const regionRobRangeToggle = document.getElementById("regionRobRangeToggle");
   const regionRobSummaryBodyEl = document.getElementById("regionRobSummaryBody");
   function applyRegionRobRangeCollapsedState(){
@@ -4731,15 +5007,15 @@
     // Same gold-border treatment as the ETA tab's #resultCard (.has-value,
     // see renderResult()) — only once there's a real computed figure to
     // show, on whichever of the two cards is actually visible right now.
-    const cardEl = document.getElementById(state.consumptionMode==="region" ? "regionRobSummaryCard" : "robSummaryCard");
-    if(state.consumptionMode === "region"){
+    const cardEl = document.getElementById(state.voyageMode==="leg" ? "regionRobSummaryCard" : "robSummaryCard");
+    if(state.voyageMode === "leg"){
       const totalHours = regionTotalHours();
       if(totalHours==null || !state.routeLegs.length){
         el.innerHTML = "Add route legs with a distance (and speed, if it differs from the ETA tab) to project consumption at arrival.";
         if(cardEl) cardEl.classList.remove("has-value");
         return;
       }
-      el.innerHTML = "<b class=\"text-brass\">By Region</b> &middot; Total transit time: <b>"+fmtDuration(totalHours)+"</b> &middot; "+(totalHours/24).toFixed(2)+" days across "+state.routeLegs.length+" leg"+(state.routeLegs.length>1?"s":"");
+      el.innerHTML = "<b class=\"text-brass\">By Leg</b> &middot; Total transit time: <b>"+fmtDuration(totalHours)+"</b> &middot; "+(totalHours/24).toFixed(2)+" days across "+state.routeLegs.length+" leg"+(state.routeLegs.length>1?"s":"");
       if(cardEl) cardEl.classList.add("has-value");
       return;
     }
@@ -4755,15 +5031,15 @@
     if(cardEl) cardEl.classList.add("has-value");
   }
 
-  /* ---------------- By Region mode: legs, mode toggle, region ROB summary ---------------- */
+  /* ---------------- By Leg mode: legs, mode toggle, region ROB summary ---------------- */
   const routeLegsCard = document.getElementById("routeLegsCard");
   const routeLegsListEl = document.getElementById("routeLegsList");
   const regionRobSummaryCard = document.getElementById("regionRobSummaryCard");
-  const legTotalNote = document.getElementById("legTotalNote");
 
   function renderRouteLegs(){
     routeLegsListEl.innerHTML = "";
     state.routeLegs.forEach((leg, i) => {
+      const isLast = i === state.routeLegs.length-1;
       const row = document.createElement("div");
       row.className = "route-leg";
       row.innerHTML =
@@ -4774,9 +5050,15 @@
         '<div class="field"><label>Leg name (optional)</label><input type="text" class="leg-label" placeholder="e.g. Non-ECA transit / ECA zone"></div>'+
         '<div class="field-row" style="margin-top:10px;">'+
           '<div class="field"><label>Distance (nm)</label><input type="number" class="leg-distance" inputmode="decimal" min="0" step="any" placeholder="0.0"></div>'+
-          '<div class="field"><label>Speed override (kn)</label><input type="number" class="leg-speed" inputmode="decimal" min="0" step="any" placeholder="'+(parseFloat(state.speed)||0).toFixed(1)+'"></div>'+
+          '<div class="field"><label>Speed on this leg (kn)</label><input type="number" class="leg-speed" inputmode="decimal" min="0" step="any" placeholder="0.0"></div>'+
         '</div>'+
-        '<p class="req-note" style="margin-top:6px;"></p>';
+        '<p class="req-note leg-distance-hint" style="margin-top:6px;"></p>'+
+        (isLast ? "" :
+          '<div class="field-row" style="margin-top:10px;">'+
+            '<div class="field"><label>Timezone</label><select class="leg-zone"></select></div>'+
+          '</div>'
+        )+
+        '<div class="leg-rob-item leg-eta-preview" style="margin-top:10px;"></div>';
       row.querySelector(".route-leg-ordinal").textContent = ordinal(i+1)+" Leg";
       const labelEl = row.querySelector(".leg-label");
       const distEl = row.querySelector(".leg-distance");
@@ -4784,32 +5066,77 @@
       labelEl.value = leg.label;
       distEl.value = leg.distance;
       speedEl.value = leg.speedOverride;
-      // The distance cap/hint (below) is (re)applied by updateLegTotalNote(),
-      // which always runs right after this function whenever legs are
-      // rendered/changed — no need to duplicate that logic here too.
+      const zoneEl = row.querySelector(".leg-zone");
+      if(zoneEl) fillOffsetSelect(zoneEl, false, leg.zone);
       // Editing an existing leg's own fields never needs to rebuild the leg
       // list (or anything else) — only the leg COUNT changing does (see
       // rebuildForLegChange() below), so typing here can't lose focus the
       // way the ETA tab's variance/interval fields once did.
       labelEl.addEventListener("input", () => { leg.label = labelEl.value; saveState(); });
-      distEl.addEventListener("input", () => {
-        const maxDist = parseFloat(getRobReferenceDistance());
-        let val = parseFloat(distEl.value);
-        if(isFinite(maxDist) && maxDist>0 && isFinite(val) && val>maxDist){
-          distEl.value = maxDist;
-        }
-        leg.distance = distEl.value;
-        saveState();
-        refreshAllConsumption();
-        updateLegTotalNote();
-      });
-      speedEl.addEventListener("input", () => { leg.speedOverride = speedEl.value; saveState(); refreshAllConsumption(); });
+      distEl.addEventListener("input", () => { leg.distance = distEl.value; saveState(); render(); updateRouteLegPreviews(); });
+      speedEl.addEventListener("input", () => { leg.speedOverride = speedEl.value; saveState(); render(); updateRouteLegPreviews(); });
+      if(zoneEl) zoneEl.addEventListener("change", () => { leg.zone = zoneEl.value; saveState(); render(); updateRouteLegPreviews(); });
       row.querySelector(".consum-del").addEventListener("click", () => {
         state.routeLegs = state.routeLegs.filter(l => l.id !== leg.id);
         saveState();
         rebuildForLegChange();
       });
       routeLegsListEl.appendChild(row);
+    });
+    updateRouteLegPreviews();
+  }
+  // Live, content-only refresh of every leg row's two notes — never
+  // rebuilds the row/input elements themselves (see the comment on why,
+  // above), so it's safe to call on every keystroke without losing focus.
+  // Distance hint: progressive remaining budget against Total Distance
+  // (state.distance) — a leg that would push the running total past it
+  // gets a danger-styled note instead (checked again, and finally
+  // enforced, by renderResult()'s own over-budget guard — this note is
+  // the early, in-context warning). ETA preview: each leg's own cumulative
+  // arrival instant, shown in that leg's own timezone (the last leg has
+  // no zone field of its own — it uses the Arrival card's zone instead,
+  // same as the Results card's per-leg breakdown).
+  function updateRouteLegPreviews(){
+    const rows = document.querySelectorAll("#routeLegsList .route-leg");
+    if(!rows.length) return;
+    const totalDistance = parseFloat(state.distance);
+    const focusArrZI = getZoneInfo(state.arr);
+    const etaRows = legEtaRows();
+    let cumBefore = 0;
+    rows.forEach((row, i) => {
+      const leg = state.routeLegs[i];
+      const hintEl = row.querySelector(".leg-distance-hint");
+      const d = parseFloat(leg.distance);
+      if(isFinite(totalDistance) && totalDistance>0){
+        const remaining = totalDistance - cumBefore;
+        if(isFinite(d) && d > remaining + 1e-9){
+          hintEl.className = "req-note leg-distance-hint danger";
+          hintEl.textContent = "Exceeded by "+(d-remaining).toLocaleString(undefined,{maximumFractionDigits:1})+" nm";
+        } else {
+          hintEl.className = "req-note leg-distance-hint ok";
+          hintEl.textContent = remaining.toLocaleString(undefined,{maximumFractionDigits:1})+" nm remaining";
+        }
+      } else {
+        hintEl.className = "req-note leg-distance-hint";
+        hintEl.textContent = "Enter a Total Distance on the Arrival card above to check this against.";
+      }
+      cumBefore += isFinite(d) ? d : 0;
+
+      const previewEl = row.querySelector(".leg-eta-preview");
+      const r = etaRows[i];
+      if(!r || r.legHours==null){
+        previewEl.innerHTML = '<span>ETA this leg</span><b>—</b><div class="leg-rob-used">Enter this leg&rsquo;s distance and speed to see it.</div>';
+      } else {
+        const isLast = i === rows.length-1;
+        const zone = r.zone || (focusArrZI ? focusArrZI.zone : null);
+        const local = zone ? r.etaUTC.setZone(zone) : null;
+        const offsetLabel = r.zone ? displayOffset(r.zone) : (focusArrZI ? zoneOffsetLabel(focusArrZI, r.etaUTC) : null);
+        const legTimeLine = "Steaming time "+fmtDuration(r.legHours);
+        previewEl.innerHTML = local
+          ? '<span>ETA this leg</span><b>'+local.toFormat("dd LLL, HH:mm")+' LT</b><div class="leg-rob-used">'+
+            escHtml(offsetLabel)+' &middot; GMT '+r.etaUTC.toFormat("dd LLL, HH:mm")+' &middot; '+legTimeLine+(isLast?' &middot; Arrival zone':'')+'</div>'
+          : '<span>ETA this leg</span><b>'+r.etaUTC.toFormat("dd LLL, HH:mm")+' GMT</b><div class="leg-rob-used">'+legTimeLine+'</div>';
+      }
     });
   }
 
@@ -4822,93 +5149,63 @@
     renderConsumableList(fuelListEl, "fuels");
     renderConsumableList(lubeListEl, "lubeOils");
     renderFreshWaterLegRates();
-    refreshAllConsumption();
-    updateLegTotalNote();
+    render();
   }
 
   document.getElementById("addLegBtn").addEventListener("click", () => {
-    state.routeLegs.push(defaultRouteLeg(""));
+    state.routeLegs.push(defaultRouteLeg("", currentArrOffset()));
     syncLegRateKeys();
     saveState();
     rebuildForLegChange();
   });
 
-  // Subtle cross-check on the ETA tab — not a hard block, just a heads-up
-  // when the leg breakdown doesn't add up to the primary "Distance to go".
-  // Applies the "can't exceed the ETA tab's total distance" cap/hint to every
-  // currently-rendered leg row. Centralized here (rather than duplicated in
-  // renderRouteLegs()) since this always needs to re-run whenever
-  // state.distance changes too, not just when legs are added/removed.
-  function updateLegDistanceCaps(){
-    // Follows whichever port the "ROB reference arrival" selector is
-    // currently pointing at (defaults to primary) — legs are being used to
-    // project consumption, so the cap should match what that projection is
-    // actually referenced against, not always the primary voyage.
-    const maxDist = parseFloat(getRobReferenceDistance());
-    const portLabel = getRobReferencePortLabel();
-    document.querySelectorAll("#routeLegsList .route-leg").forEach(row => {
-      const distEl = row.querySelector(".leg-distance");
-      const hintEl = row.querySelector(".req-note");
-      if(isFinite(maxDist) && maxDist>0){
-        distEl.max = maxDist;
-        hintEl.hidden = false;
-        hintEl.textContent = "Max "+maxDist.toLocaleString()+" nm — "+portLabel+" (ROB reference arrival)";
-      } else {
-        distEl.removeAttribute("max");
-        hintEl.hidden = true;
-      }
+  function applyVoyageModeUI(){
+    const isLeg = state.voyageMode === "leg";
+    document.querySelectorAll("#voyageModeTabs .loc-tab").forEach(btn => {
+      btn.classList.toggle("active", btn.dataset.mode === state.voyageMode);
     });
-  }
-  function updateLegTotalNote(){
-    updateLegDistanceCaps();
-    if(state.consumptionMode!=="region" || !state.routeLegs.length){ legTotalNote.hidden = true; return; }
-    let total = 0, any = false;
-    state.routeLegs.forEach(leg => { const d = parseFloat(leg.distance); if(isFinite(d)){ total += d; any = true; } });
-    if(!any){ legTotalNote.hidden = true; return; }
-    legTotalNote.hidden = false;
-    legTotalNote.className = "req-note";
-    legTotalNote.textContent = "Route legs total: "+total.toLocaleString(undefined,{maximumFractionDigits:1})+" nm";
+    document.getElementById("voyageModeTabs").classList.toggle("mode-region", isLeg);
+    // ETA tab: a leg-based route is one specific path, so the "what if I
+    // divert elsewhere instead" alternative arrivals feature steps aside
+    // for the Route Legs card. Distance to go stays visible in both modes
+    // (relabeled "Total Distance" here — legs must add up to it); only the
+    // flat Speed field goes away, since speed is set per leg instead.
+    document.getElementById("dtgLabel").textContent = isLeg ? "Total Distance (nm)" : "Distance to go (nm)";
+    document.getElementById("speedField").hidden = isLeg;
+    document.getElementById("legSpeedNote").hidden = !isLeg;
+    routeLegsCard.hidden = !isLeg;
+    document.getElementById("altArrivalsSection").hidden = isLeg;
+    document.getElementById("robSummaryCard").hidden = isLeg;
+    regionRobSummaryCard.hidden = !isLeg;
+    document.getElementById("fuelPerDayLabel").textContent = isLeg ? "Per leg" : "Per day ("+unitFor("fuels")+")";
+    document.getElementById("lubePerDayLabel").textContent = isLeg ? "Per leg" : "Per day ("+unitFor("lubeOils")+")";
+    fwConsField.hidden = isLeg;
+    fwProdField.hidden = isLeg;
+    fwConsLegRates.hidden = !isLeg;
+    fwProdLegRates.hidden = !isLeg;
+    document.getElementById("fwConsLegRatesHeading").hidden = !isLeg;
+    document.getElementById("fwProdLegRatesHeading").hidden = !isLeg;
   }
 
-  function applyConsumModeUI(){
-    const isRegion = state.consumptionMode === "region";
-    document.querySelectorAll("#consumModeTabs .loc-tab").forEach(btn => {
-      btn.classList.toggle("active", btn.dataset.mode === state.consumptionMode);
-    });
-    document.getElementById("consumModeTabs").classList.toggle("mode-region", isRegion);
-    routeLegsCard.hidden = !isRegion;
-    document.getElementById("robSummaryCard").hidden = isRegion;
-    regionRobSummaryCard.hidden = !isRegion;
-    document.getElementById("fuelPerDayLabel").textContent = isRegion ? "Per leg" : "Per day ("+unitFor("fuels")+")";
-    document.getElementById("lubePerDayLabel").textContent = isRegion ? "Per leg" : "Per day ("+unitFor("lubeOils")+")";
-    fwConsField.hidden = isRegion;
-    fwProdField.hidden = isRegion;
-    fwConsLegRates.hidden = !isRegion;
-    fwProdLegRates.hidden = !isRegion;
-    document.getElementById("fwConsLegRatesHeading").hidden = !isRegion;
-    document.getElementById("fwProdLegRatesHeading").hidden = !isRegion;
-    updateLegTotalNote();
-  }
-
-  document.querySelectorAll("#consumModeTabs .loc-tab").forEach(btn => {
+  document.querySelectorAll("#voyageModeTabs .loc-tab").forEach(btn => {
     btn.addEventListener("click", () => {
-      if(btn.dataset.mode === state.consumptionMode) return;
-      state.consumptionMode = btn.dataset.mode;
-      if(state.consumptionMode==="region" && state.routeLegs.length===0){
-        state.routeLegs = [defaultRouteLeg(""), defaultRouteLeg("")];
+      if(btn.dataset.mode === state.voyageMode) return;
+      state.voyageMode = btn.dataset.mode;
+      if(state.voyageMode==="leg" && state.routeLegs.length===0){
+        state.routeLegs = [defaultRouteLeg("", currentArrOffset()), defaultRouteLeg("", currentArrOffset())];
         syncLegRateKeys();
       }
       saveState();
-      applyConsumModeUI();
+      applyVoyageModeUI();
       renderRouteLegs();
       renderConsumableList(fuelListEl, "fuels");
       renderConsumableList(lubeListEl, "lubeOils");
       renderFreshWaterLegRates();
-      refreshAllConsumption();
+      render();
     });
   });
 
-  // "Projected ROB Summary" — By Region's replacement for ROB Across Speed
+  // "Projected ROB Summary" — By Leg's replacement for ROB Across Speed
   // Range (which doesn't apply here, since there's no single planned speed).
   // One row per fuel type / Fresh Water / lube oil type, reusing the exact
   // status styling (consumableStatus/STATUS_LABEL/.consum-chip) already used
@@ -4951,7 +5248,7 @@
     '</div>';
   }
   function renderRegionRobSummary(){
-    if(state.consumptionMode!=="region") return;
+    if(state.voyageMode!=="leg") return;
     const el = document.getElementById("regionRobSummaryInner");
     if(!el) return;
     if(!state.routeLegs.length){
@@ -4975,13 +5272,13 @@
   // A quick at-a-glance status across every fuel, lube oil, and fresh water
   // line — mirrors what the ETA tab's bottom bar does for the ETA itself.
   function consumptionSummaryText(){
-    const isRegion = state.consumptionMode === "region";
-    const days = isRegion ? (regionTotalHours()!=null ? regionTotalHours()/24 : null) : daysToETA();
+    const isLeg = state.voyageMode === "leg";
+    const days = isLeg ? (regionTotalHours()!=null ? regionTotalHours()/24 : null) : daysToETA();
     let danger = 0, warn = 0, any = false;
     [...state.consumption.fuels, ...state.consumption.lubeOils].forEach(it => {
       const rateMapKey = state.consumption.fuels.includes(it) ? "fuelRates" : "lubeRates";
       const rob = parseFloat(it.rob);
-      if(isRegion){
+      if(isLeg){
         if(!isFinite(rob) || !state.routeLegs.length) return;
         any = true;
         if(days==null) return;
@@ -5000,7 +5297,7 @@
     const fw = state.consumption.freshWater;
     const fwRob = parseFloat(fw.rob);
     if(isFinite(fwRob)){
-      if(isRegion){
+      if(isLeg){
         if(state.routeLegs.length){
           any = true;
           if(days!=null){
@@ -5035,10 +5332,10 @@
     const onConsumption = activeTab && activeTab.dataset.tab === "consumption";
     let hasValue;
     if(onConsumption){
-      const isRegion = state.consumptionMode==="region";
+      const isLeg = state.voyageMode==="leg";
       // Whichever of the two ROB cards is actually visible right now (see
       // applyRobVisibility()) — .has-value is set on it by renderConsumInfo().
-      const visibleRobCard = isRegion ? regionRobSummaryCard : document.getElementById("robSummaryCard");
+      const visibleRobCard = isLeg ? regionRobSummaryCard : document.getElementById("robSummaryCard");
       hasValue = !!(visibleRobCard && visibleRobCard.classList.contains("has-value"));
       // Region mode's card is titled "Projected ROB Summary" (not "ROB
       // Across Speed Range") — match that exact wording rather than a
@@ -5046,7 +5343,7 @@
       // the only remaining place this wording shows now that the bar is
       // just an arrow icon (no visible text) — still matters for screen
       // readers.
-      const robTargetName = isRegion ? "Projected ROB Summary" : "ROB across speed range";
+      const robTargetName = isLeg ? "Projected ROB Summary" : "ROB across speed range";
       bottomBarEl.setAttribute("aria-label", "Jump to "+robTargetName);
     } else {
       bottomBarEl.setAttribute("aria-label", "Jump to ETA");
@@ -5068,7 +5365,7 @@
     const activeTab = document.querySelector(".main-tab.active");
     const onConsumption = activeTab && activeTab.dataset.tab === "consumption";
     const targetCard = onConsumption
-      ? (state.consumptionMode==="region" ? regionRobSummaryCard : document.getElementById("robSummaryCard"))
+      ? (state.voyageMode==="leg" ? regionRobSummaryCard : document.getElementById("robSummaryCard"))
       : resultCardEl;
     // The result cards now live at the BOTTOM of each tab (moved there per
     // an earlier change), so the common case is the target being entirely
@@ -5094,7 +5391,6 @@
     refreshListSummary("fuels");
     refreshListSummary("lubeOils");
     refreshRobBottomBar();
-    updateLegTotalNote();
   }
 
   function render(){
@@ -5114,7 +5410,13 @@
   }
 
   function buildReportText(){
-    const calc = primaryETA();
+    // Mirrors renderResult()'s own Straight-vs-By-Leg branching (calc source,
+    // whether the speed-range table applies, whether alt arrivals apply) so
+    // the copied report never shows something the ETA tab itself wouldn't —
+    // e.g. "ETA Across Speed Range" assumes one flat planned speed, which By
+    // Leg mode doesn't have (see the comment on speedTable's own call below).
+    const isLeg = state.voyageMode === "leg";
+    const calc = isLeg ? legModeCalc() : primaryETA();
     if(!calc) return "ETA Calculator report\n(Incomplete voyage details.)";
     const arrZI = getZoneInfo(state.arr);
     const etaArr = arrZI ? calc.etaUTC.setZone(arrZI.zone) : null;
@@ -5122,26 +5424,52 @@
     const lines = [];
     lines.push("ETA CALCULATOR REPORT");
     lines.push("Generated: "+DT.utc().toFormat("dd LLL yyyy HH:mm")+" GMT");
+    lines.push("Voyage mode: "+(isLeg ? "By Leg" : "Straight"));
     lines.push("");
     lines.push("Departure: "+(depZI.label)+" ("+zoneOffsetLabel(depZI, calc.dep.instant.toUTC())+")");
     lines.push("  "+calc.dep.instant.toFormat("dd LLL yyyy HH:mm")+" LT");
     lines.push("Arrival location: "+(arrZI ? arrZI.label+" ("+zoneOffsetLabel(arrZI, calc.etaUTC)+")" : "not set"));
     lines.push("");
-    lines.push("Distance to go: "+calc.distance+" nm");
-    lines.push("Planned speed: "+calc.speed.toFixed(1)+" kn");
+    lines.push((isLeg?"Total distance":"Distance to go")+": "+calc.distance+" nm");
+    // By Leg mode's speed is a derived average (total distance / total
+    // steaming time), not something typed in — shown to 2 decimals, same
+    // precision the ETA tab's own stat-grid uses for it.
+    lines.push((isLeg?"Average speed":"Planned speed")+": "+calc.speed.toFixed(isLeg?2:1)+" kn");
     lines.push("Steaming time: "+fmtDuration(calc.hours));
     lines.push("");
     lines.push("ETA (GMT): "+calc.etaUTC.toFormat("dd LLL yyyy HH:mm"));
     if(etaArr) lines.push("ETA (Arrival LT): "+etaArr.toFormat("dd LLL yyyy HH:mm"));
 
-    const rows = speedTable(calc);
-    if(rows.length){
-      lines.push("");
-      lines.push("Speed variance (±"+(parseFloat(state.variance)||0)+" kn, step "+(parseFloat(state.interval)||0.5)+" kn):");
-      rows.forEach(r=>{
-        const shown = arrZI ? r.etaUTC.setZone(arrZI.zone) : r.etaUTC;
-        lines.push("  "+r.speed.toFixed(1)+" kn -> "+shown.toFormat("dd LLL HH:mm")+(r.planned?" (planned)":""));
-      });
+    if(isLeg){
+      // Mirrors legEtaBreakdownHTML() (the on-screen "ETA Per Leg" block)
+      // as plain text — cumulative arrival time leg by leg, distinct from
+      // the ROUTE LEGS listing further down (that one's each leg's own
+      // distance/speed/duration, not a running ETA).
+      const rows = legEtaRows();
+      if(rows.length){
+        lines.push("");
+        lines.push("ETA PER LEG");
+        rows.forEach((r,i) => {
+          const label = i===rows.length-1 ? "Estimated Time of Arrival" : "ETA in "+ordinal(r.legIndex+1)+" Leg";
+          const local = r.zone ? r.etaUTC.setZone(r.zone) : (arrZI ? r.etaUTC.setZone(arrZI.zone) : null);
+          const mainLine = local ? local.toFormat("dd LLL yyyy HH:mm")+" LT" : r.etaUTC.toFormat("dd LLL yyyy HH:mm")+" GMT";
+          lines.push("  "+label+": "+mainLine+(r.legHours!=null ? " (leg time "+fmtDuration(r.legHours)+")" : ""));
+        });
+      }
+    } else {
+      // ETA Across Speed Range assumes one flat planned speed — By Leg mode
+      // has a derived average instead (already reported above), so this
+      // table is Straight-mode only, same as renderResult()'s own
+      // `if(!isLeg){ ... speedTable ... }` on the ETA tab itself.
+      const rows = speedTable(calc);
+      if(rows.length){
+        lines.push("");
+        lines.push("Speed variance (±"+(parseFloat(state.variance)||0)+" kn, step "+(parseFloat(state.interval)||0.5)+" kn):");
+        rows.forEach(r=>{
+          const shown = arrZI ? r.etaUTC.setZone(arrZI.zone) : r.etaUTC;
+          lines.push("  "+r.speed.toFixed(1)+" kn -> "+shown.toFormat("dd LLL HH:mm")+(r.planned?" (planned)":""));
+        });
+      }
     }
 
     if(state.reqEnabled){
@@ -5152,7 +5480,13 @@
       }
     }
 
-    if(state.altArrivals.length){
+    // Alternative arrival ports don't apply to a leg-based route (one
+    // specific path, not a set of "what if I divert elsewhere" candidates)
+    // — the ETA tab itself hides this whole card in By Leg mode
+    // (altArrivalsSection.hidden = isLeg, see applyVoyageModeUI()), so the
+    // report leaves it out the same way rather than reporting on stale
+    // entries left over from before switching modes.
+    if(!isLeg && state.altArrivals.length){
       lines.push("");
       lines.push("ALTERNATIVE ARRIVALS");
       state.altArrivals.forEach((alt, idx) => {
@@ -5166,13 +5500,10 @@
       });
     }
 
-    const isRegion = state.consumptionMode === "region";
     const fuelUnit = unitFor("fuels"), lubeUnit = unitFor("lubeOils");
     const fw = state.consumption.freshWater;
 
-    if(isRegion){
-      lines.push("");
-      lines.push("CONSUMPTION MODE: By Region");
+    if(isLeg){
       if(state.routeLegs.length){
         lines.push("");
         lines.push("ROUTE LEGS");
@@ -5223,11 +5554,11 @@
       const days = refCalc ? refCalc.hours/24 : calc.hours/24;
       const refLabel = getRobReferenceLabel();
       function reportRow(item, unit){
-        const rob = parseFloat(item.rob), perDay = parseFloat(item.perDay);
-        if(!isFinite(rob) && !isFinite(perDay)) return null;
-        const projected = (isFinite(rob) && isFinite(perDay)) ? rob - perDay*days : null;
-        return "  "+item.name+": ROB "+(isFinite(rob)?rob.toFixed(1):"—")+" "+unit+", "+(isFinite(perDay)?perDay.toFixed(1):"—")+" "+unit+"/day"+
-          (projected!=null ? " -> projected "+fmtQty(projected)+" "+unit+" at ETA" : "");
+        const rob = parseFloat(item.rob);
+        if(!isFinite(rob)) return null;
+        const perDay = parseFloat(item.perDay) || 0; // blank rate = not currently being drawn, not "unknown"
+        const projected = rob - perDay*days;
+        return "  "+item.name+": ROB "+rob.toFixed(1)+" "+unit+", "+perDay.toFixed(1)+" "+unit+"/day -> projected "+fmtQty(projected)+" "+unit+" at ETA";
       }
       const fuelLines = state.consumption.fuels.map(it => reportRow(it, fuelUnit)).filter(Boolean);
       const lubeLines = state.consumption.lubeOils.map(it => reportRow(it, lubeUnit)).filter(Boolean);
@@ -5366,7 +5697,7 @@
     if(state.dep.portIndex!=null && !PORTS_ALL[state.dep.portIndex]) state.dep.portIndex = null;
     if(state.arr.portIndex!=null && !PORTS_ALL[state.arr.portIndex]) state.arr.portIndex = null;
     state.altArrivals = normalizeAltArrivals(state.altArrivals, state.speed);
-    state.consumptionMode = state.consumptionMode === "region" ? "region" : "straight";
+    state.voyageMode = state.voyageMode === "leg" ? "leg" : "straight";
     state.routeLegs = normalizeRouteLegs(state.routeLegs);
     saveState();
     hydrateUI();
@@ -5429,12 +5760,12 @@
       state.variance = "2"; state.interval = "0.5";
       state.reqEnabled = false; state.reqDate = ""; state.reqTime = ""; state.reqZone = "arr";
       state.etaSpeedRangePort = "primary"; state.reqSpeedPort = "primary";
-    } else if(state.consumptionMode === "region"){
+    } else if(state.voyageMode === "leg"){
       // Same two-blank-legs starting point already used when first
       // switching into Region mode — clears every per-leg rate and each
       // leg's own distance/speed override too, since those live on the
       // leg objects being replaced.
-      state.routeLegs = [defaultRouteLeg(""), defaultRouteLeg("")];
+      state.routeLegs = [defaultRouteLeg("", currentArrOffset()), defaultRouteLeg("", currentArrOffset())];
     } else {
       state.consumption.fuels.forEach(it => { it.perDay = ""; });
       state.consumption.lubeOils.forEach(it => { it.perDay = ""; });
@@ -5486,7 +5817,7 @@
     const onConsumption = activeTab && activeTab.dataset.tab === "consumption";
     let el;
     if(onConsumption){
-      if(state.consumptionMode === "region"){
+      if(state.voyageMode === "leg"){
         if(state.regionRobSummaryCollapsed){
           state.regionRobSummaryCollapsed = false;
           saveState();
@@ -5522,7 +5853,7 @@
     applyRegionRobRangeCollapsedState();
     applyRobVisibility();
     renderLocationBlock(depLocEl, state.dep, () => { saveState(); render(); });
-    renderLocationBlock(arrLocEl, state.arr, () => { saveState(); populateRobRefOptions(); render(); });
+    renderLocationBlock(arrLocEl, state.arr, () => { saveState(); populateRobRefOptions(); render(); if(state.voyageMode==="leg") updateRouteLegPreviews(); });
     renderAltArrivals();
     populateRobRefOptions();
     depDate.value = state.dateStr; depTime.value = state.timeStr;
@@ -5537,7 +5868,7 @@
     renderConsumableList(lubeListEl, "lubeOils");
     renderRouteLegs();
     renderFreshWaterLegRates();
-    applyConsumModeUI();
+    applyVoyageModeUI();
     render();
   }
 
@@ -5568,11 +5899,6 @@
      and nothing in the ETA/Consumption tabs reads from this. Reached only
      via its own Home card / showFreshwater(). */
 
-  // Reuses the exact same independent-port-focus mechanism Required Speed
-  // already has (resolveFocusPort()/getReqFocusPort()) — just its own
-  // top-level state key (state.fwPlannerPort) so resolveFocusPort() (which
-  // only reads top-level state fields) works unmodified.
-  function getFwPlannerFocusPort(){ return resolveFocusPort("fwPlannerPort"); }
   function fwUnit(){ return state.freshwaterPlanner.unit || "m³"; }
 
   function fwAddTank(){
@@ -5605,7 +5931,6 @@
     renderFwSequences();
     renderFwResults();
   }
-
   // The core calculation — event-driven, not fixed daily steps: production
   // and consumption are each a single constant daily rate, so every tank's
   // level changes at a constant rate for as long as it's the "active" tank
@@ -5615,28 +5940,11 @@
   // thousands of discretized steps — while still fully respecting
   // sequencing/overflow, since the loop advances real tank levels at each
   // exact event rather than assuming one combined pool.
-  // Direct mirror of regionLegHours()/regionTotalHours() (Consumption's By
-  // Region mode) — sums this tool's own leg list, speed falling back to
-  // state.speed the same way. Legs with no distance yet just contribute 0.
-  function fwLegHours(leg){
-    const distance = parseFloat(leg.distance);
-    const speed = parseFloat(leg.speedOverride) || parseFloat(state.speed);
-    if(!isFinite(distance) || distance<=0 || !isFinite(speed) || speed<=0) return null;
-    return distance/speed;
-  }
-  function fwLegTotalHours(){
-    let total = 0, any = false;
-    state.freshwaterPlanner.legs.forEach(leg => {
-      const h = fwLegHours(leg);
-      if(h!=null){ total += h; any = true; }
-    });
-    return any ? total : null;
-  }
 
   function simulateFwPlanner(){
     const fw = state.freshwaterPlanner;
     const dep = departureInstant();
-    const totalHours = fwLegTotalHours();
+    const totalHours = totalVoyageHours();
     const prodRate = parseFloat(fw.prodPerDay), consRate = parseFloat(fw.consPerDay);
     if(!dep || totalHours==null || !isFinite(prodRate) || !isFinite(consRate) || !fw.genDate || !fw.genTime){
       return {status:"incomplete"};
@@ -5645,7 +5953,7 @@
     if(!genStartDT.isValid) return {status:"incomplete"};
     // Generator start, placed on the same 0..totalHours timeline as arrival
     // (t=0 is the ship's own departure instant — same anchor Consumption's
-    // By Region mode already uses for its own leg-based totals). Can land
+    // By Leg mode already uses for its own leg-based totals). Can land
     // before departure (clamped to 0 — generator was already running) or
     // after arrival (clamped to totalHours — production never turns on
     // during this passage); both are flagged for the results, not errors.
@@ -6008,102 +6316,30 @@
             initLevels};
   }
 
-  function fwPortSelectHTML(){
-    const primaryZI = getZoneInfo(state.arr);
-    let html = '<option value="primary">Primary — '+escHtml(primaryZI?primaryZI.label:"arrival not set")+'</option>';
-    state.altArrivals.forEach((a,i) => {
-      const zi = getZoneInfo(a.arr);
-      html += '<option value="'+a.id+'">Alt '+(i+1)+' — '+escHtml(zi?zi.label:"arrival not set")+'</option>';
-    });
-    return html;
-  }
-
-  // Voyage legs — mirrors renderRouteLegs() (Consumption's By Region mode,
-  // index.html ~4727) row-for-row, including reusing its own .route-leg/
-  // .route-leg-head/.route-leg-ordinal CSS (those classes aren't scoped to
-  // #routeLegsList, so no new styling is needed here).
-  const fwLegsListEl = document.getElementById("fwLegsList");
-  function renderFwLegs(){
-    fwLegsListEl.innerHTML = "";
-    state.freshwaterPlanner.legs.forEach((leg, i) => {
-      const row = document.createElement("div");
-      row.className = "route-leg";
-      row.innerHTML =
-        '<div class="route-leg-head">'+
-          '<span class="route-leg-ordinal"></span>'+
-          '<button type="button" class="consum-del" aria-label="Remove leg">'+TRASH_SVG+'</button>'+
-        '</div>'+
-        '<div class="field"><label>Leg name (optional)</label><input type="text" class="fw-leg-label" placeholder="e.g. Non-ECA transit / ECA zone"></div>'+
-        '<div class="field-row" style="margin-top:10px;">'+
-          '<div class="field"><label>Distance (nm)</label><input type="number" class="fw-leg-distance" inputmode="decimal" min="0" step="any" placeholder="0.0"></div>'+
-          '<div class="field"><label>Speed override (kn)</label><input type="number" class="fw-leg-speed" inputmode="decimal" min="0" step="any" placeholder="'+(parseFloat(state.speed)||0).toFixed(1)+'"></div>'+
-        '</div>'+
-        '<p class="req-note" style="margin-top:6px;"></p>';
-      row.querySelector(".route-leg-ordinal").textContent = ordinal(i+1)+" Leg";
-      const labelEl = row.querySelector(".fw-leg-label");
-      const distEl = row.querySelector(".fw-leg-distance");
-      const speedEl = row.querySelector(".fw-leg-speed");
-      labelEl.value = leg.label;
-      distEl.value = leg.distance;
-      speedEl.value = leg.speedOverride;
-      labelEl.addEventListener("input", () => { leg.label = labelEl.value; saveState(); });
-      distEl.addEventListener("input", () => {
-        const maxDist = parseFloat(getFwPlannerFocusPort().distance);
-        const val = parseFloat(distEl.value);
-        if(isFinite(maxDist) && maxDist>0 && isFinite(val) && val>maxDist){
-          distEl.value = maxDist;
-        }
-        leg.distance = distEl.value;
-        saveState();
-        renderFwResults();
-        updateFwLegTotalNote();
-      });
-      speedEl.addEventListener("input", () => { leg.speedOverride = speedEl.value; saveState(); renderFwResults(); });
-      row.querySelector(".consum-del").addEventListener("click", () => {
-        if(state.freshwaterPlanner.legs.length <= 1) return; // keep at least 1 leg
-        state.freshwaterPlanner.legs = state.freshwaterPlanner.legs.filter(l => l.id !== leg.id);
-        saveState();
-        rebuildFwForLegChange();
-      });
-      fwLegsListEl.appendChild(row);
-    });
-    updateFwLegDistanceCaps();
-  }
-  // The leg COUNT changed (add/remove) — legs themselves need reconstructing.
-  // A plain edit to one leg's own fields never calls this (see renderFwLegs()).
-  function rebuildFwForLegChange(){
-    renderFwLegs();
-    renderFwResults();
-    updateFwLegTotalNote();
-  }
-  // Re-applies the "can't exceed the reference port's own distance" cap/hint
-  // to every currently-rendered leg row — mirrors updateLegDistanceCaps()
-  // (index.html ~4763). Re-run whenever legs are rendered/changed, or the
-  // reference port selection changes.
-  function updateFwLegDistanceCaps(){
-    const focus = getFwPlannerFocusPort();
-    const maxDist = parseFloat(focus.distance);
-    document.querySelectorAll("#fwLegsList .route-leg").forEach(row => {
-      const distEl = row.querySelector(".fw-leg-distance");
-      const hintEl = row.querySelector(".req-note");
-      if(isFinite(maxDist) && maxDist>0){
-        distEl.max = maxDist;
-        hintEl.hidden = false;
-        hintEl.textContent = "Max "+maxDist.toLocaleString()+" nm — "+escHtml(focus.label)+" (reference)";
-      } else {
-        distEl.removeAttribute("max");
-        hintEl.hidden = true;
+  // Read-only "what's the voyage right now" line for the Voyage Inputs
+  // card — this tool no longer keeps its own leg list/reference port; it
+  // just reflects whatever the ETA tab currently has configured. Editing
+  // it happens on the ETA tab (fwGotoEta button, above).
+  function updateFwVoyageSummary(){
+    const el = document.getElementById("fwVoyageSummary");
+    const hours = totalVoyageHours();
+    if(state.voyageMode === "leg"){
+      if(hours==null || !state.routeLegs.length){
+        el.textContent = "By Leg — enter leg distances on the ETA tab to see the voyage total.";
+        return;
       }
-    });
-  }
-  function updateFwLegTotalNote(){
-    updateFwLegDistanceCaps();
-    const note = document.getElementById("fwLegTotalNote");
-    let total = 0, any = false;
-    state.freshwaterPlanner.legs.forEach(leg => { const d = parseFloat(leg.distance); if(isFinite(d)){ total += d; any = true; } });
-    if(!any){ note.hidden = true; return; }
-    note.hidden = false;
-    note.textContent = "Legs total: "+total.toLocaleString(undefined,{maximumFractionDigits:1})+" nm";
+      let distance = 0;
+      state.routeLegs.forEach(leg => { const d = parseFloat(leg.distance); if(isFinite(d)) distance += d; });
+      el.textContent = "By Leg · "+state.routeLegs.length+" leg"+(state.routeLegs.length>1?"s":"")+" · "+
+        distance.toLocaleString(undefined,{maximumFractionDigits:1})+" nm · "+fmtDuration(hours)+" total — edit on the ETA tab above.";
+    } else {
+      if(hours==null){
+        el.textContent = "Straight — enter distance & speed on the ETA tab to see the voyage total.";
+        return;
+      }
+      el.textContent = "Straight · "+(parseFloat(state.distance)||0).toLocaleString()+" nm at "+
+        (parseFloat(state.speed)||0).toFixed(1)+" kn · "+fmtDuration(hours)+" total — edit on the ETA tab above.";
+    }
   }
 
   function fwTankCardHTML(t){
@@ -6282,14 +6518,23 @@
       const target = parseFloat(t.target);
       let status = "ok", label = null;
       if(level!=null){
+        // Compared at the same 1-decimal precision fmtQty() actually
+        // displays (via roundDisp below) rather than a near-zero epsilon —
+        // the exact simulated level can land a fraction of a unit off
+        // target (e.g. a restart time that gets rounded to the nearest
+        // second, see the bisection above) without that ever being visible
+        // at the precision shown, so the status shown has to agree with
+        // what's on screen or "295.0" reading HIGH against a "295.0"
+        // target looks like a bug even when it technically isn't one.
+        const roundDisp = n => Math.round(n*10)/10;
         if(level<=0) status = "danger";
         else if(t.lowLimitOn && isFinite(threshold) && level<threshold) status = "danger";
-        else if(isFinite(target) && level < target - 1e-9) status = "warn";
+        else if(isFinite(target) && roundDisp(level) < roundDisp(target)) status = "warn";
         // Landed above its own target rather than below it — same amber
         // "needs a look" color as LOW (both mean "didn't land where you
         // set"; a third color for this would just be more to read), but
         // a distinct label so the direction is still clear at a glance.
-        else if(isFinite(target) && level > target + 1e-9){ status = "warn"; label = "HIGH"; }
+        else if(isFinite(target) && roundDisp(level) > roundDisp(target)){ status = "warn"; label = "HIGH"; }
         else if(isFinite(cap) && cap>0 && level/cap<0.15) status = "warn";
       }
       html += '<div class="stat-tile"><div class="k">'+escHtml(t.name||"Tank")+'</div><div class="v">'+(level!=null?fmtQty(level):"—")+' '+unit+'</div>'+
@@ -6325,9 +6570,6 @@
 
   function renderFwPlanner(){
     fillUnitSelect(document.getElementById("fwPlannerUnitSelect"), state.freshwaterPlanner.unit);
-    const portSelect = document.getElementById("fwPortSelect");
-    portSelect.innerHTML = fwPortSelectHTML();
-    portSelect.value = state.fwPlannerPort;
     fillOffsetSelect(document.getElementById("fwGenZone"), false, state.freshwaterPlanner.genZone);
     clampFwGenStart(); // catches a departure date/time edited on the ETA tab after this was already set
     document.getElementById("fwGenDate").value = state.freshwaterPlanner.genDate;
@@ -6338,8 +6580,7 @@
       : "Complete the ETA tab's departure date/time first.";
     document.getElementById("fwConsPerDay").value = state.freshwaterPlanner.consPerDay;
     document.getElementById("fwProdPerDay").value = state.freshwaterPlanner.prodPerDay;
-    renderFwLegs();
-    updateFwLegTotalNote();
+    updateFwVoyageSummary();
     renderFwTanks();
     renderFwSequences();
     renderFwResults();
@@ -6349,16 +6590,6 @@
     state.freshwaterPlanner.unit = e.target.value;
     saveState();
     renderFwPlanner(); // unit affects every displayed label/value on this view
-  });
-  document.getElementById("fwPortSelect").addEventListener("change", (e) => {
-    state.fwPlannerPort = e.target.value;
-    saveState();
-    updateFwLegTotalNote(); // reference port change moves the max-distance hint, not the simulation
-  });
-  document.getElementById("fwAddLegBtn").addEventListener("click", () => {
-    state.freshwaterPlanner.legs.push(defaultFwLeg(""));
-    saveState();
-    rebuildFwForLegChange();
   });
   function onFwGenStartInput(){
     clampFwGenStart(); // no-op unless the new value actually lands before departure
@@ -6377,6 +6608,406 @@
   document.getElementById("fwProdPerDay").addEventListener("input", (e) => { state.freshwaterPlanner.prodPerDay = e.target.value; saveState(); renderFwResults(); });
   document.getElementById("fwAddTankBtn").addEventListener("click", fwAddTank);
 
+  /* ---------------- Fuel Planner ----------------
+     A fuel-grade-aware sibling of the Freshwater Planner above — same tank
+     + draw-sequence idea, coordinated to the same ETA-tab voyage, but fuel
+     is never produced onboard, so there's no generator-start/production
+     half at all: each tank simply drains, in its own grade's draw order,
+     until it's empty or the voyage ends. Every tank picks one of the
+     Consumption tab's own fuel grades (state.consumption.fuels) — there's
+     no separate grade list to manage here — and the rate used for a grade
+     defaults to that same Consumption tab figure, optionally overridden.
+     Reached only via its own Home card / showFuelPlanner(). */
+
+  function fuelUnit(){ return state.fuelPlanner.unit || "MT"; }
+  // Grades that currently have at least one tank assigned — no point
+  // showing a rate/sequence section, or a Summary block, for a grade
+  // nothing actually draws from.
+  function activeFuelGradeIds(){
+    const ids = [];
+    state.fuelPlanner.tanks.forEach(t => { if(t.fuelTypeId && !ids.includes(t.fuelTypeId)) ids.push(t.fuelTypeId); });
+    return ids;
+  }
+  // The rate simulateFuelPlanner() actually uses for a grade: the Fuel
+  // Planner's own override if one's set, else whatever's entered for that
+  // grade on the Consumption tab — Straight mode's flat perDay, or (in By
+  // Leg mode) that leg's own fuelRates entry.
+  // A blank rate means "nothing entered yet," not "unknown" — same
+  // standing rule as the Consumption tab's own rate fields (see
+  // renderConsumableList()'s refresh()) — so this always resolves to a
+  // real number, never NaN.
+  function fuelEffectiveRateStraight(fuelId){
+    const override = parseFloat(state.fuelPlanner.rateOverrides[fuelId]);
+    if(isFinite(override)) return override;
+    const fuel = state.consumption.fuels.find(f => f.id===fuelId);
+    const v = fuel ? parseFloat(fuel.perDay) : NaN;
+    return isFinite(v) ? v : 0;
+  }
+  function fuelEffectiveRateForLeg(leg, fuelId){
+    const override = parseFloat(leg.fuelPlannerRates[fuelId]);
+    if(isFinite(override)) return override;
+    const v = parseFloat(leg.fuelRates[fuelId]);
+    return isFinite(v) ? v : 0;
+  }
+  // The Consumption tab's OWN rate for this grade, ignoring any Fuel
+  // Planner override — used only to seed the override input's placeholder
+  // (see renderFuelTypeSections()) so the field visibly shows what it
+  // would fall back to if left blank.
+  function fuelConsumptionTabRateStraight(fuelId){
+    const fuel = state.consumption.fuels.find(f => f.id===fuelId);
+    const v = fuel ? parseFloat(fuel.perDay) : NaN;
+    return isFinite(v) ? v : 0;
+  }
+  function fuelConsumptionTabRateForLeg(leg, fuelId){
+    const v = parseFloat(leg.fuelRates[fuelId]);
+    return isFinite(v) ? v : 0;
+  }
+
+  function fuelAddTank(){
+    const n = state.fuelPlanner.tanks.length;
+    const t = defaultFuelTank("Fuel Tank "+(n+1));
+    t.fuelTypeId = state.consumption.fuels[0] ? state.consumption.fuels[0].id : "";
+    state.fuelPlanner.tanks.push(t);
+    state.fuelPlanner = normalizeFuelPlanner(state.fuelPlanner); // adds it to that grade's draw order
+    saveState();
+    renderFuelPlanner();
+  }
+  function fuelDeleteTank(id){
+    if(state.fuelPlanner.tanks.length <= 1) return; // keep at least one tank
+    state.fuelPlanner.tanks = state.fuelPlanner.tanks.filter(t => t.id !== id);
+    state.fuelPlanner = normalizeFuelPlanner(state.fuelPlanner); // drops it from its grade's draw order too
+    saveState();
+    renderFuelPlanner();
+  }
+  function fuelToggleLowLimit(id){
+    const t = state.fuelPlanner.tanks.find(x => x.id === id);
+    if(!t) return;
+    t.lowLimitOn = !t.lowLimitOn;
+    saveState();
+    renderFuelPlanner();
+  }
+  function fuelChangeType(id, newFuelTypeId){
+    const t = state.fuelPlanner.tanks.find(x => x.id === id);
+    if(!t) return;
+    t.fuelTypeId = newFuelTypeId;
+    state.fuelPlanner = normalizeFuelPlanner(state.fuelPlanner); // moves it to the new grade's draw order, drops it from the old one
+    saveState();
+    renderFuelPlanner();
+  }
+  function fuelMoveInSequence(fuelTypeId, id, dir){
+    const seq = state.fuelPlanner.sequenceByType[fuelTypeId];
+    if(!seq) return;
+    const i = seq.indexOf(id), j = i+dir;
+    if(i<0 || j<0 || j>=seq.length) return;
+    const tmp = seq[i]; seq[i] = seq[j]; seq[j] = tmp;
+    saveState();
+    renderFuelTypeSections();
+    renderFuelResults();
+  }
+
+  // Straight-line drain for one fuel grade — no correction/restart logic
+  // needed, since nothing here is ever solved for; a tank simply drains.
+  // The *rate* it drains at is either one flat number (Straight mode) or a
+  // schedule of per-leg rates (By Leg mode) — the event loop picks
+  // whichever comes soonest between a tank running dry and the current leg
+  // ending, the same "soonest candidate" approach simulateFwPlanner() above
+  // already uses. Straight mode is just the segments.length===1 case of
+  // this same loop (its one segment's remaining time always equals the
+  // voyage's own remaining time), so there's no separate code path for it.
+  function simulateFuelPlanner(fuelId){
+    const dep = departureInstant();
+    const totalHours = totalVoyageHours();
+    if(!dep || totalHours==null) return {status:"incomplete"};
+
+    let segments;
+    if(state.voyageMode === "leg"){
+      if(!state.routeLegs.length) return {status:"incomplete"};
+      segments = [];
+      for(const leg of state.routeLegs){
+        const hours = regionLegHours(leg);
+        const rate = fuelEffectiveRateForLeg(leg, fuelId);
+        if(hours==null || !isFinite(rate)) return {status:"incomplete"};
+        segments.push({hours, consPerHour: rate/24});
+      }
+    } else {
+      const rate = fuelEffectiveRateStraight(fuelId);
+      if(!isFinite(rate)) return {status:"incomplete"};
+      segments = [{hours: totalHours, consPerHour: rate/24}];
+    }
+
+    const tanks = state.fuelPlanner.tanks.filter(t => t.fuelTypeId === fuelId);
+    const consSeq = (state.fuelPlanner.sequenceByType[fuelId] || []).slice();
+    const initLevels = {}, minSeen = {};
+    tanks.forEach(t => {
+      const rob = parseFloat(t.rob)||0;
+      initLevels[t.id] = rob; minSeen[t.id] = rob;
+    });
+    const levels = Object.assign({}, initLevels);
+    const events = [];
+    const snap = () => Object.assign({}, levels);
+    if(consSeq.length) events.push({hours:0, kind:"consStart", tankId:consSeq[0], levels:snap()});
+
+    // consumedByTank/consumedByTankByLeg feed the Summary's "consumed en
+    // route" breakdown — tracked alongside levels rather than derived from
+    // initLevels-minus-final (a tank can be revisited after a leg boundary
+    // without ever fully emptying, so per-leg attribution needs the actual
+    // per-segment draw, not just a before/after delta).
+    const consumedByTank = {};
+    const consumedByTankByLeg = {};
+    tanks.forEach(t => { consumedByTank[t.id] = 0; consumedByTankByLeg[t.id] = {}; });
+
+    let t=0, segIdx=0, segStart=0, i=0, guard=0;
+    while(t < totalHours - 1e-9 && i < consSeq.length && guard++ < 5000){
+      const seg = segments[segIdx];
+      const tankId = consSeq[i];
+      const segRemaining = (segStart + seg.hours) - t;
+      const timeToEmpty = seg.consPerHour>0 ? levels[tankId]/seg.consPerHour : Infinity;
+      const dt = Math.min(timeToEmpty, segRemaining, totalHours - t);
+      const drawn = seg.consPerHour*dt;
+      levels[tankId] -= drawn;
+      minSeen[tankId] = Math.min(minSeen[tankId], levels[tankId]);
+      consumedByTank[tankId] += drawn;
+      consumedByTankByLeg[tankId][segIdx] = (consumedByTankByLeg[tankId][segIdx]||0) + drawn;
+      t += dt;
+      if(t >= totalHours - 1e-9) break;
+      if(timeToEmpty <= segRemaining + 1e-9){
+        events.push({hours:t, kind:"consSwitch", fromId:tankId, toId: consSeq[i+1]||null, levels:snap()});
+        i++;
+      } else { // leg boundary reached — rate changes, same tank keeps draining
+        segStart += seg.hours; segIdx++;
+      }
+    }
+    events.push({hours: totalHours, kind:"arrival", levels: snap()});
+
+    const lowLimitWarnings = [];
+    tanks.forEach(t => {
+      if(!t.lowLimitOn) return;
+      const threshold = parseFloat(t.lowLimit);
+      if(!isFinite(threshold)) return;
+      if(minSeen[t.id] < threshold - 1e-9) lowLimitWarnings.push({name: t.name||"Tank", minLevel: minSeen[t.id], threshold});
+    });
+
+    return {status:"ok", totalHours, levels, dep, lowLimitWarnings, consumedByTank, consumedByTankByLeg};
+  }
+
+  function fuelTankCardHTML(t){
+    const canDelete = state.fuelPlanner.tanks.length > 1;
+    const unit = escHtml(fuelUnit());
+    const typeOptions = state.consumption.fuels.map(f =>
+      '<option value="'+f.id+'"'+(f.id===t.fuelTypeId?' selected':'')+'>'+escHtml(f.name||"(unnamed)")+'</option>'
+    ).join("");
+    return '<div class="card" style="margin-bottom:10px;" data-tank-id="'+t.id+'">'+
+      '<div class="field"><label>Tank name</label><input type="text" class="fuel-tank-name" placeholder="e.g. Fuel Tank 1" value="'+escHtml(t.name)+'"></div>'+
+      '<div class="field" style="margin-top:10px;"><label>Fuel type</label><select class="fuel-tank-type">'+typeOptions+'</select></div>'+
+      '<div class="field-row" style="margin-top:10px;">'+
+        '<div class="field"><label>Capacity ('+unit+')</label><input type="number" class="fuel-tank-capacity" inputmode="decimal" min="0" step="any" placeholder="0.0" value="'+escHtml(t.capacity)+'"></div>'+
+        '<div class="field"><label>Current ROB ('+unit+')</label><input type="number" class="fuel-tank-rob" inputmode="decimal" min="0" step="any" placeholder="0.0" value="'+escHtml(t.rob)+'"></div>'+
+      '</div>'+
+      '<div class="rob-vis-toggles" role="group" aria-label="Low limit" style="margin-top:10px;">'+
+        '<button type="button" class="rob-vis-chip fuel-lowlimit-chip" aria-pressed="'+(t.lowLimitOn?"true":"false")+'"><span class="rob-vis-dot"></span>Low Limit</button>'+
+      '</div>'+
+      (t.lowLimitOn ? '<div class="field" style="margin-top:10px;"><label>Low Limit ('+unit+')</label><input type="number" class="fuel-tank-lowlimit" inputmode="decimal" min="0" step="any" placeholder="0.0" value="'+escHtml(t.lowLimit)+'"></div>' : '')+
+      (canDelete ? '<button type="button" class="link-btn link-btn-danger fuel-tank-delete" style="margin-top:10px;">Delete tank</button>' : '')+
+    '</div>';
+  }
+
+  function fuelSeqRowHTML(tank, idx, total, fuelTypeId){
+    return '<div class="fw-seq-row fuel-seq-row" data-tank-id="'+tank.id+'" data-fuel-id="'+fuelTypeId+'">'+
+      '<span>'+escHtml(tank.name||"(unnamed tank)")+'</span>'+
+      '<span class="fw-seq-btns">'+
+        '<button type="button" class="icon-btn fw-seq-btn fuel-seq-up" aria-label="Move up"'+(idx===0?' disabled':'')+'><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"></path><path d="m5 12 7-7 7 7"></path></svg></button>'+
+        '<button type="button" class="icon-btn fw-seq-btn fuel-seq-down" aria-label="Move down"'+(idx===total-1?' disabled':'')+'><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"></path><path d="m19 12-7 7-7-7"></path></svg></button>'+
+      '</span>'+
+    '</div>';
+  }
+
+  function renderFuelTanks(){
+    const container = document.getElementById("fuelTanksList");
+    container.innerHTML = state.fuelPlanner.tanks.map(fuelTankCardHTML).join("");
+    container.querySelectorAll("[data-tank-id]").forEach(card => {
+      const id = card.dataset.tankId;
+      const tank = state.fuelPlanner.tanks.find(t => t.id===id);
+      if(!tank) return;
+      const nameEl = card.querySelector(".fuel-tank-name");
+      nameEl.addEventListener("input", () => { tank.name = nameEl.value; saveState(); renderFuelTypeSections(); renderFuelResults(); });
+      const typeEl = card.querySelector(".fuel-tank-type");
+      typeEl.addEventListener("change", () => fuelChangeType(id, typeEl.value));
+      const capEl = card.querySelector(".fuel-tank-capacity");
+      capEl.addEventListener("input", () => { tank.capacity = capEl.value; saveState(); renderFuelResults(); });
+      const robEl = card.querySelector(".fuel-tank-rob");
+      robEl.addEventListener("input", () => { tank.rob = robEl.value; saveState(); renderFuelResults(); });
+      const lowLimitChip = card.querySelector(".fuel-lowlimit-chip");
+      if(lowLimitChip) lowLimitChip.addEventListener("click", () => fuelToggleLowLimit(id));
+      const lowLimitEl = card.querySelector(".fuel-tank-lowlimit");
+      if(lowLimitEl) lowLimitEl.addEventListener("input", () => { tank.lowLimit = lowLimitEl.value; saveState(); renderFuelResults(); });
+      const delBtn = card.querySelector(".fuel-tank-delete");
+      if(delBtn) delBtn.addEventListener("click", () => fuelDeleteTank(id));
+    });
+  }
+
+  // How the Consumption tab's own rate for this grade reads right now —
+  // shown as a plain reference line above this grade's override input(s).
+  // Builds one section per grade that currently has a tank assigned to it:
+  // an override control (its placeholder IS the Consumption tab's own rate
+  // for that grade, so the field visibly shows the value it'll use if left
+  // blank — type over it only to use a different figure here), then that
+  // grade's own draw-order list. Rebuilt whenever the tank list, voyage
+  // mode, or leg count changes — not on every keystroke; editing an
+  // override just updates state and calls renderFuelResults() directly.
+  function renderFuelTypeSections(){
+    const wrap = document.getElementById("fuelTypeSections");
+    const isLeg = state.voyageMode === "leg";
+    const gradeIds = activeFuelGradeIds();
+    if(!gradeIds.length){
+      wrap.innerHTML = '<p class="result-empty">Assign a fuel type to a tank above to see its rate and draw order here.</p>';
+      return;
+    }
+    wrap.innerHTML = gradeIds.map(fid => {
+      const fuel = state.consumption.fuels.find(f => f.id===fid);
+      const seq = state.fuelPlanner.sequenceByType[fid] || [];
+      const seqHTML = seq.length ? seq.map((id,i) => {
+        const tank = state.fuelPlanner.tanks.find(t => t.id===id);
+        return tank ? fuelSeqRowHTML(tank, i, seq.length, fid) : "";
+      }).join("") : '<p class="result-empty">No tanks yet.</p>';
+      return '<div class="route-leg" data-fuel-id="'+fid+'">'+
+        '<p class="consum-legrates-heading" style="margin-top:0;">'+escHtml(fuel?fuel.name:"Fuel")+'</p>'+
+        (isLeg
+          ? '<div class="consum-legrates" data-rate-fuel-id="'+fid+'"></div>'
+          : '<div class="field" style="margin-top:4px;"><label>Consumption rate ('+escHtml(unitFor("fuels"))+'/day)</label><input type="number" class="fuel-rate-override" data-fuel-id="'+fid+'" inputmode="decimal" min="0" step="any" placeholder="'+fmtQty(fuelConsumptionTabRateStraight(fid))+'" value="'+escHtml(state.fuelPlanner.rateOverrides[fid]||"")+'"></div>')+
+        '<p class="consum-legrates-heading">Draw order</p>'+
+        '<div class="fuel-seq-list">'+seqHTML+'</div>'+
+      '</div>';
+    }).join("");
+
+    if(!isLeg){
+      wrap.querySelectorAll(".fuel-rate-override").forEach(input => {
+        const fid = input.dataset.fuelId;
+        input.addEventListener("input", () => {
+          state.fuelPlanner.rateOverrides[fid] = input.value;
+          saveState();
+          renderFuelResults();
+        });
+      });
+    } else {
+      wrap.querySelectorAll("[data-rate-fuel-id]").forEach(container => {
+        const fid = container.dataset.rateFuelId;
+        state.routeLegs.forEach((leg,i) => {
+          const item = document.createElement("div");
+          item.className = "consum-legrate-item";
+          item.innerHTML = '<label></label><input type="number" inputmode="decimal" min="0" step="any">';
+          item.querySelector("label").textContent = "Leg "+(i+1);
+          const inp = item.querySelector("input");
+          inp.placeholder = fmtQty(fuelConsumptionTabRateForLeg(leg, fid));
+          inp.value = leg.fuelPlannerRates[fid] || "";
+          inp.addEventListener("input", () => { leg.fuelPlannerRates[fid] = inp.value; saveState(); renderFuelResults(); });
+          container.appendChild(item);
+        });
+      });
+    }
+    wrap.querySelectorAll(".fuel-seq-row").forEach(row => {
+      const id = row.dataset.tankId, fid = row.dataset.fuelId;
+      const upBtn = row.querySelector(".fuel-seq-up"), downBtn = row.querySelector(".fuel-seq-down");
+      if(upBtn) upBtn.addEventListener("click", () => fuelMoveInSequence(fid, id, -1));
+      if(downBtn) downBtn.addEventListener("click", () => fuelMoveInSequence(fid, id, 1));
+    });
+  }
+
+  // Summary — each tank's own projected ROB at arrival, grouped by grade.
+  // No event timeline (there's no target to hit any more, just a number to
+  // read off), and no more HIGH/LOW status since there's nothing to compare
+  // a level against — just OUT (empty or below Low Limit) or a plain OK/LOW
+  // fuel-remaining warning, same low-fuel heuristic the Freshwater Planner
+  // already uses (below 15% of capacity).
+  function renderFuelResults(){
+    const el = document.getElementById("fuelResultsBody");
+    const card = document.getElementById("fuelResultsCard");
+    const unit = escHtml(fuelUnit());
+    const gradeIds = activeFuelGradeIds();
+    if(!gradeIds.length){
+      el.innerHTML = '<p class="result-empty">Add a tank and assign it a fuel type to see a summary.</p>';
+      card.classList.remove("has-value");
+      return;
+    }
+    let anyOk = false, depLine = null, html = "";
+    gradeIds.forEach(fid => {
+      const fuel = state.consumption.fuels.find(f => f.id===fid);
+      const sim = simulateFuelPlanner(fid);
+      const tanksOfType = state.fuelPlanner.tanks.filter(t => t.fuelTypeId===fid);
+      html += '<div class="route-leg">';
+      html += '<p class="consum-legrates-heading" style="margin-top:0;">'+escHtml(fuel?fuel.name:"Fuel")+'</p>';
+      if(sim.status==="incomplete"){
+        html += '<p class="result-empty">Enter tank ROB/capacity and a consumption rate (here or on the Consumption tab) to see this grade&rsquo;s ROB at arrival.</p>';
+      } else {
+        anyOk = true;
+        if(!depLine) depLine = sim.dep.instant.toUTC().toFormat("dd LLL yyyy, HH:mm");
+        html += '<div class="stat-grid" style="flex-wrap:wrap;">';
+        tanksOfType.forEach(t => {
+          const level = sim.levels[t.id];
+          const cap = parseFloat(t.capacity);
+          const threshold = parseFloat(t.lowLimit);
+          let status = "ok";
+          if(level!=null){
+            if(level<=0) status = "danger";
+            else if(t.lowLimitOn && isFinite(threshold) && level<threshold) status = "danger";
+            else if(isFinite(cap) && cap>0 && level/cap<0.15) status = "warn";
+          }
+          html += '<div class="stat-tile"><div class="k">'+escHtml(t.name||"Tank")+'</div><div class="v">'+(level!=null?fmtQty(level):"—")+' '+unit+'</div>'+
+            '<span class="consum-chip '+status+'" style="margin-top:4px; display:inline-block;">'+STATUS_LABEL[status]+'</span></div>';
+        });
+        html += '</div>';
+        sim.lowLimitWarnings.forEach(w => {
+          html += '<p class="req-note danger" style="margin-top:8px;">&#9888; '+escHtml(w.name)+' projected to drop to '+fmtQty(w.minLevel)+' '+unit+' &mdash; below its '+fmtQty(w.threshold)+' '+unit+' Low Limit.</p>';
+        });
+        // Which tank(s) actually got drawn from, and how much — the whole
+        // point of a draw order is knowing this, not just the final level.
+        // In By Leg mode this is broken down leg by leg, since a tank can
+        // carry on being drawn from across a leg boundary at a new rate.
+        // One <p class="req-note"> per tank rather than <br>-joining inside
+        // a single one — .req-note is display:flex, so multiple inline
+        // children (including a <br>) lay out as separate flex items on the
+        // same row instead of actually wrapping/stacking. Plain text only
+        // (no <b>), same convention every other .req-note line in this app
+        // already follows.
+        const consumedLines = tanksOfType.map(t => {
+          const total = sim.consumedByTank ? (sim.consumedByTank[t.id]||0) : 0;
+          if(total <= 0.05) return null; // nothing meaningfully drawn from this tank
+          let line = escHtml(t.name||"Tank")+': '+fmtQty(total)+' '+unit;
+          if(state.voyageMode==="leg" && sim.consumedByTankByLeg && sim.consumedByTankByLeg[t.id]){
+            const perLeg = sim.consumedByTankByLeg[t.id];
+            const legParts = state.routeLegs.map((leg,i) => {
+              const v = perLeg[i] || 0;
+              return v > 0.05 ? "Leg "+(i+1)+": "+fmtQty(v)+" "+unit : null;
+            }).filter(Boolean);
+            if(legParts.length) line += ' ('+legParts.join(' &middot; ')+')';
+          }
+          return '<p class="req-note" style="margin-top:2px;">'+line+'</p>';
+        }).filter(Boolean);
+        if(consumedLines.length){
+          html += '<p class="consum-legrates-heading" style="margin-top:10px;">Consumed en route</p>';
+          html += consumedLines.join('');
+        }
+      }
+      html += '</div>';
+    });
+    if(depLine) html = '<div class="req-note" style="margin-top:0;">Departure: '+depLine+' UTC &mdash; ROB below is projected at arrival.</div>' + html;
+    el.innerHTML = html;
+    card.classList.toggle("has-value", anyOk);
+  }
+
+  function renderFuelPlanner(){
+    fillUnitSelect(document.getElementById("fuelPlannerUnitSelect"), state.fuelPlanner.unit);
+    renderFuelTanks();
+    renderFuelTypeSections();
+    renderFuelResults();
+  }
+
+  document.getElementById("fuelPlannerUnitSelect").addEventListener("change", (e) => {
+    state.fuelPlanner.unit = e.target.value;
+    saveState();
+    renderFuelPlanner(); // unit affects every displayed label/value on this view
+  });
+  document.getElementById("fuelAddTankBtn").addEventListener("click", fuelAddTank);
+
   /* ---------------- Home screen + sidebar ---------------- */
   const APP_VERSION = "1.0.0";
   const homeView = document.getElementById("homeView");
@@ -6384,6 +7015,7 @@
   const paywallView = document.getElementById("paywallView");
   const redeemView = document.getElementById("redeemView");
   const freshwaterView = document.getElementById("freshwaterView");
+  const fuelPlannerView = document.getElementById("fuelPlannerView");
   const bottomBarWrap = document.getElementById("bottomBarWrap");
   document.getElementById("homeFooter").textContent =
     "v"+APP_VERSION+" · ETA and Consumption Calculator for deck officers";
@@ -6395,36 +7027,42 @@
   // so it's toggled here via inline style rather than the [hidden] attribute
   // convention used elsewhere, to avoid fighting that existing cascade.
   function showHome(){
-    appView.hidden = true; paywallView.hidden = true; redeemView.hidden = true; freshwaterView.hidden = true;
+    appView.hidden = true; paywallView.hidden = true; redeemView.hidden = true; freshwaterView.hidden = true; fuelPlannerView.hidden = true;
     homeView.hidden = false;
     bottomBarWrap.style.display = "none";
   }
   function showAppView(){
-    homeView.hidden = true; paywallView.hidden = true; redeemView.hidden = true; freshwaterView.hidden = true;
+    homeView.hidden = true; paywallView.hidden = true; redeemView.hidden = true; freshwaterView.hidden = true; fuelPlannerView.hidden = true;
     appView.hidden = false;
     bottomBarWrap.style.display = "";
     updateBottomBar();
   }
-  // Paywall/Redeem/Freshwater Planner — same full-screen-view pattern as
+  // Paywall/Redeem/Freshwater Planner/Fuel Planner — same full-screen-view pattern as
   // Home/App. "Back" on each always returns to Home (kept simple rather
   // than tracking exactly where the user tapped in from).
   function showPaywall(){
-    homeView.hidden = true; appView.hidden = true; redeemView.hidden = true; freshwaterView.hidden = true;
+    homeView.hidden = true; appView.hidden = true; redeemView.hidden = true; freshwaterView.hidden = true; fuelPlannerView.hidden = true;
     paywallView.hidden = false;
     bottomBarWrap.style.display = "none";
     renderPaywallPrice();
   }
   function showRedeem(){
-    homeView.hidden = true; appView.hidden = true; paywallView.hidden = true; freshwaterView.hidden = true;
+    homeView.hidden = true; appView.hidden = true; paywallView.hidden = true; freshwaterView.hidden = true; fuelPlannerView.hidden = true;
     redeemView.hidden = false;
     bottomBarWrap.style.display = "none";
     resetRedeemForm();
   }
   function showFreshwater(){
-    homeView.hidden = true; appView.hidden = true; paywallView.hidden = true; redeemView.hidden = true;
+    homeView.hidden = true; appView.hidden = true; paywallView.hidden = true; redeemView.hidden = true; fuelPlannerView.hidden = true;
     freshwaterView.hidden = false;
     bottomBarWrap.style.display = "none";
     renderFwPlanner();
+  }
+  function showFuelPlanner(){
+    homeView.hidden = true; appView.hidden = true; paywallView.hidden = true; redeemView.hidden = true; freshwaterView.hidden = true;
+    fuelPlannerView.hidden = false;
+    bottomBarWrap.style.display = "none";
+    renderFuelPlanner();
   }
   showHome();
 
@@ -6457,6 +7095,28 @@
     document.querySelector('.main-tab[data-tab="consumption"]').click();
     showAppView();
   });
+  // Consumption's own Fresh Water card → Freshwater Planner — the reverse
+  // direction of fwGotoConsumption above. No paywall check needed: reaching
+  // the Consumption tab at all already means Pro is unlocked.
+  document.getElementById("fwOpenPlannerBtn").addEventListener("click", showFreshwater);
+
+  document.getElementById("homeCardFuel").addEventListener("click", () => {
+    // PREMIUM: same Pro gate as Consumption Calculator/Freshwater Planner.
+    if(!isFeatureUnlocked()){ showPaywall(); return; }
+    showFuelPlanner();
+  });
+  document.getElementById("fuelBackBtn").addEventListener("click", showHome);
+  document.getElementById("fuelGotoEta").addEventListener("click", () => {
+    document.querySelector('.main-tab[data-tab="eta"]').click();
+    showAppView();
+  });
+  document.getElementById("fuelGotoConsumption").addEventListener("click", () => {
+    document.querySelector('.main-tab[data-tab="consumption"]').click();
+    showAppView();
+  });
+  // Consumption's own Bunker Fuel card → Fuel Planner — same reverse-direction
+  // pattern as fwOpenPlannerBtn above. No paywall check needed here either.
+  document.getElementById("fuelOpenPlannerBtn").addEventListener("click", showFuelPlanner);
 
   // Sidebar drawer — same fixed-overlay hidden/.open pattern as the History
   // sheet (openHistory/closeHistory below), just sliding in from the left.
@@ -6930,6 +7590,7 @@
   const consumptionTabBtn = document.querySelector('.main-tab[data-tab="consumption"]');
   const homeCardConsumptionEl = document.getElementById("homeCardConsumption");
   const homeCardFreshwaterEl = document.getElementById("homeCardFreshwater");
+  const homeCardFuelEl = document.getElementById("homeCardFuel");
   const downloadDesktopBtn = document.getElementById("downloadDesktopBtn");
   // PREMIUM (free-tier ETA tab gating): alternative arrival ports and
   // Required Speed — the third gated piece, the ETA-across-speed-range
@@ -6970,6 +7631,7 @@
     setLocked(consumptionTabBtn, !unlocked);
     setLocked(homeCardConsumptionEl, !unlocked);
     setLocked(homeCardFreshwaterEl, !unlocked);
+    setLocked(homeCardFuelEl, !unlocked);
     // Desktop download is Premium-only — an active trial unlocks the
     // Consumption Calculator but deliberately NOT the desktop download.
     setLocked(downloadDesktopBtn, !premium);
