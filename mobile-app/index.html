@@ -158,6 +158,16 @@
     .split-col-side{ order:0; position:sticky; top:16px; }
     .consum-grid{ display:grid; grid-template-columns: 1fr 1fr; gap:16px; align-items:start; }
     .consum-span2{ grid-column: 1 / -1; }
+    /* Freshwater/Fuel Planner opt into the same wide desktop layout as the
+       ETA/Consumption tabs (.split-grid above) via this modifier — Paywall
+       and Redeem also use .full-view but deliberately stay narrow/centered
+       (simple single-column pages, nothing to put in a side column), so the
+       width override lives on this separate class rather than on
+       .full-view itself. Chained with .full-view (both classes are always
+       on the same element) rather than .full-view-wide alone, since the
+       base .full-view{max-width:480px} rule further down the stylesheet
+       has equal specificity and would otherwise win on source order. */
+    .full-view.full-view-wide{ max-width:1180px; }
   }
 
   /* ---------- Top bar ---------- */
@@ -962,7 +972,7 @@
   .home-card-eta .home-card-icon{ background:color-mix(in srgb, var(--accent) 18%, var(--surface2)); color:var(--accent); }
   .home-card-consum .home-card-icon{ background:color-mix(in srgb, var(--brass) 18%, var(--surface2)); color:var(--brass); }
   .home-card-fw .home-card-icon{ background:color-mix(in srgb, var(--ok) 18%, var(--surface2)); color:var(--ok); }
-  .home-card-fuel .home-card-icon{ background:color-mix(in srgb, var(--warn) 18%, var(--surface2)); color:var(--warn); }
+  .home-card-fuel .home-card-icon{ background:color-mix(in srgb, var(--danger) 18%, var(--surface2)); color:var(--danger); }
   .home-footer{ margin-top:26px; text-align:center; font-size:11px; color:var(--text-dim); }
 
   /* ---------- Home screen ambient motion ----------
@@ -2054,9 +2064,10 @@
       <tbody>
         <tr><td>Basic ETA calculation (1 port)</td><td class="cmp-yes">&#10003;</td><td class="cmp-yes">&#10003;</td></tr>
         <tr><td>ETA across speed range</td><td class="cmp-no">&ndash;</td><td class="cmp-yes">&#10003;</td></tr>
+        <tr><td>ETA across different legs (By Leg mode)</td><td class="cmp-no">&ndash;</td><td class="cmp-yes">&#10003;</td></tr>
         <tr><td>Alternative arrival ports</td><td class="cmp-no">&ndash;</td><td class="cmp-yes">&#10003;</td></tr>
         <tr><td>Required speed</td><td class="cmp-no">&ndash;</td><td class="cmp-yes">&#10003;</td></tr>
-        <tr><td>Consumption Calculator (Straight &amp; By Leg)</td><td class="cmp-no">&ndash;</td><td class="cmp-yes">&#10003;</td></tr>
+        <tr><td>Consumption Calculator</td><td class="cmp-no">&ndash;</td><td class="cmp-yes">&#10003;</td></tr>
         <tr><td>Freshwater Planner</td><td class="cmp-no">&ndash;</td><td class="cmp-yes">&#10003;</td></tr>
         <tr><td>Fuel Planner</td><td class="cmp-no">&ndash;</td><td class="cmp-yes">&#10003;</td></tr>
         <tr><td>Desktop app download</td><td class="cmp-no">&ndash;</td><td class="cmp-yes">&#10003;</td></tr>
@@ -2117,7 +2128,7 @@
      other). Reached only via its own Home card, not nested in the
      ETA/Consumption .main-tabs pill switcher. -->
 <div id="freshwaterView" hidden>
-  <div class="full-view">
+  <div class="full-view full-view-wide">
     <div class="full-view-topbar">
       <button class="icon-btn" id="fwBackBtn" type="button" aria-label="Back">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"></path></svg>
@@ -2131,6 +2142,9 @@
     </div>
 
     <p class="req-note" style="margin-top:-6px;">Plan generator-stop timing across multiple tanks so levels land on a target by arrival.</p>
+
+    <div class="split-grid">
+    <div class="split-col-main">
 
     <!-- TANKS -->
     <section class="card">
@@ -2186,12 +2200,17 @@
       <div id="fwConsSeqList"></div>
     </section>
 
+    </div>
+    <div class="split-col-side">
+
     <!-- RESULTS -->
     <section class="card card--result" id="fwResultsCard">
       <p class="nameplate">The plan: <span class="rivet"></span></p>
       <div id="fwResultsBody"></div>
     </section>
 
+    </div>
+    </div>
   </div>
 </div>
 
@@ -2205,7 +2224,7 @@
      Consumption tab figure (Straight: perDay; By Leg: leg.fuelRates),
      optionally overridden here. Reached only via its own Home card. -->
 <div id="fuelPlannerView" hidden>
-  <div class="full-view">
+  <div class="full-view full-view-wide">
     <div class="full-view-topbar">
       <button class="icon-btn" id="fuelBackBtn" type="button" aria-label="Back">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"></path></svg>
@@ -2219,6 +2238,9 @@
     </div>
 
     <p class="req-note" style="margin-top:-6px;">Track tank levels by fuel grade, and the order tanks of that grade are drawn from, to see each tank's ROB at arrival.</p>
+
+    <div class="split-grid">
+    <div class="split-col-main">
 
     <!-- TANKS -->
     <section class="card">
@@ -2234,12 +2256,17 @@
       <div id="fuelTypeSections"></div>
     </section>
 
+    </div>
+    <div class="split-col-side">
+
     <!-- SUMMARY -->
     <section class="card card--result" id="fuelResultsCard">
       <p class="nameplate">Summary <span class="rivet"></span></p>
       <div id="fuelResultsBody"></div>
     </section>
 
+    </div>
+    </div>
   </div>
 </div>
 
@@ -5190,6 +5217,13 @@
   document.querySelectorAll("#voyageModeTabs .loc-tab").forEach(btn => {
     btn.addEventListener("click", () => {
       if(btn.dataset.mode === state.voyageMode) return;
+      // PREMIUM: By Leg mode (route legs, ETA per leg, and everything
+      // downstream that only applies in this mode — Consumption/Freshwater
+      // Planner/Fuel Planner's own per-leg rates) is a Pro feature. Only
+      // switching TO it is gated — switching back to Straight always works,
+      // same "never trap someone in a locked state" reasoning as elsewhere.
+      // See setLocked() applied to this button in applyPremiumUI().
+      if(btn.dataset.mode === "leg" && !isFeatureUnlocked()){ showPaywall(); return; }
       state.voyageMode = btn.dataset.mode;
       if(state.voyageMode==="leg" && state.routeLegs.length===0){
         state.routeLegs = [defaultRouteLeg("", currentArrOffset()), defaultRouteLeg("", currentArrOffset())];
@@ -6737,10 +6771,16 @@
 
     const tanks = state.fuelPlanner.tanks.filter(t => t.fuelTypeId === fuelId);
     const consSeq = (state.fuelPlanner.sequenceByType[fuelId] || []).slice();
-    const initLevels = {}, minSeen = {};
+    const initLevels = {}, minSeen = {}, floors = {};
     tanks.forEach(t => {
       const rob = parseFloat(t.rob)||0;
       initLevels[t.id] = rob; minSeen[t.id] = rob;
+      // A tank never draws down past its own Low Limit — draw moves on to
+      // the next tank in the sequence at that floor instead of at 0, same
+      // as "runs dry" but at a higher line. A tank whose ROB already starts
+      // below its own floor draws nothing at all (see Math.max(0, ...) below).
+      const limit = parseFloat(t.lowLimit);
+      floors[t.id] = (t.lowLimitOn && isFinite(limit)) ? limit : 0;
     });
     const levels = Object.assign({}, initLevels);
     const events = [];
@@ -6761,7 +6801,7 @@
       const seg = segments[segIdx];
       const tankId = consSeq[i];
       const segRemaining = (segStart + seg.hours) - t;
-      const timeToEmpty = seg.consPerHour>0 ? levels[tankId]/seg.consPerHour : Infinity;
+      const timeToEmpty = seg.consPerHour>0 ? Math.max(0, levels[tankId]-floors[tankId])/seg.consPerHour : Infinity;
       const dt = Math.min(timeToEmpty, segRemaining, totalHours - t);
       const drawn = seg.consPerHour*dt;
       levels[tankId] -= drawn;
@@ -6915,9 +6955,10 @@
   // Summary — each tank's own projected ROB at arrival, grouped by grade.
   // No event timeline (there's no target to hit any more, just a number to
   // read off), and no more HIGH/LOW status since there's nothing to compare
-  // a level against — just OUT (empty or below Low Limit) or a plain OK/LOW
-  // fuel-remaining warning, same low-fuel heuristic the Freshwater Planner
-  // already uses (below 15% of capacity).
+  // a level against — just OUT (empty, or started below its own Low Limit),
+  // LOW (drawing correctly stopped right at the Low Limit, or under 15% of
+  // capacity — same low-fuel heuristic the Freshwater Planner already
+  // uses), or OK.
   function renderFuelResults(){
     const el = document.getElementById("fuelResultsBody");
     const card = document.getElementById("fuelResultsCard");
@@ -6948,7 +6989,14 @@
           let status = "ok";
           if(level!=null){
             if(level<=0) status = "danger";
-            else if(t.lowLimitOn && isFinite(threshold) && level<threshold) status = "danger";
+            // Consumption is now floor-enforced (see simulateFuelPlanner()'s
+            // floors[]) — a tank can only land below its own Low Limit if its
+            // starting ROB already was, not from drawing past it. Landing
+            // AT the limit (within float tolerance) means the draw sequence
+            // correctly stopped there — flagged LOW, not OUT, since that's
+            // working as intended, not a shortfall.
+            else if(t.lowLimitOn && isFinite(threshold) && level < threshold - 1e-6) status = "danger";
+            else if(t.lowLimitOn && isFinite(threshold) && level <= threshold + 1e-6) status = "warn";
             else if(isFinite(cap) && cap>0 && level/cap<0.15) status = "warn";
           }
           html += '<div class="stat-tile"><div class="k">'+escHtml(t.name||"Tank")+'</div><div class="v">'+(level!=null?fmtQty(level):"—")+' '+unit+'</div>'+
@@ -7597,6 +7645,7 @@
   // section itself, is locked per-render inside renderResult() instead
   // (its DOM node doesn't persist across renders the way these two do).
   const addAltArrivalBtnEl = document.getElementById("addAltArrivalBtn");
+  const byLegTabBtnEl = document.querySelector('#voyageModeTabs .loc-tab[data-mode="leg"]');
   const reqCardEl = document.getElementById("reqCard");
   const upgradeToProBtn = document.getElementById("upgradeToProBtn");
   const upgradeToProLabel = document.getElementById("upgradeToProLabel");
@@ -7641,6 +7690,7 @@
     // section's own lock is applied inside renderResult() each render.
     setLocked(addAltArrivalBtnEl, !unlocked);
     setLocked(reqCardEl, !unlocked);
+    setLocked(byLegTabBtnEl, !unlocked);
     renderGlobalTrialBanner(unlockedByTrialOnly);
 
     if(premium){
