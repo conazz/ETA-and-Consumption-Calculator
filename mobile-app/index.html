@@ -414,6 +414,15 @@
   }
   input::placeholder{ color:var(--text-dim); font-family:var(--font-body); }
   input:focus-visible, select:focus-visible{ outline:2px solid var(--accent); outline-offset:1px; }
+  /* A numeric field currently holding a value outside its own min/max (in
+     practice: negative, since virtually every numeric input in this app
+     already sets min="0") gets a quiet red outline — a broad, near-zero-
+     cost signal that reaches every such field app-wide without touching
+     each one's own JS. Never fires on an empty field (nothing entered
+     yet isn't "invalid"). Fields that need to reject zero too, not just
+     negative (distance/speed — min="0" alone doesn't catch "0"), pair
+     this with their own explicit hint text instead — see #dtg/#speed. */
+  input[type="number"]:invalid{ border-color:var(--danger); }
   /* iOS Safari renders <input type="time">'s internal HH:MM segments with its
      own metrics that don't reflow to fit a custom monospace font at this
      size, so the text overflows past the input's own border — Chrome/Android
@@ -1806,10 +1815,12 @@
           <div class="field">
             <label for="dtg" id="dtgLabel">Distance to go (nm)</label>
             <input type="number" id="dtg" inputmode="decimal" min="0" step="any" placeholder="0.0">
+            <p class="req-note danger" id="dtgPositiveHint" hidden>Must be greater than 0.</p>
           </div>
           <div class="field" id="speedField">
             <label for="speed">Speed (kn)</label>
             <input type="number" id="speed" inputmode="decimal" min="0" step="any" placeholder="0.0">
+            <p class="req-note danger" id="speedPositiveHint" hidden>Must be greater than 0.</p>
           </div>
         </div>
         <p class="req-note" id="legSpeedNote" hidden>Speed is set per leg below.</p>
@@ -3735,7 +3746,16 @@
       onChange();
     });
     comboInput.addEventListener("focus", () => { if(comboInput.value.trim()) comboInput.dispatchEvent(new Event("input")); });
-    document.addEventListener("click", (e) => { if(!container.contains(e.target)) closeList(); });
+    // renderLocationBlock() re-runs on this same container many times over
+    // an app session (swap, history load, redeem, etc.) — a plain
+    // document.addEventListener here would add a new permanent listener
+    // (closed over this render's now-stale comboList) every single time,
+    // an unbounded leak. Track and remove the previous one first, same
+    // "container element persists, only its children get replaced" fact
+    // that makes container.contains(...) itself still safe to reuse.
+    if(container._outsideClickHandler) document.removeEventListener("click", container._outsideClickHandler);
+    container._outsideClickHandler = (e) => { if(!container.contains(e.target)) closeList(); };
+    document.addEventListener("click", container._outsideClickHandler);
 
     addPortToggle.addEventListener("click", () => {
       addPortForm.hidden = !addPortForm.hidden;
@@ -3934,6 +3954,17 @@
   const depTime = document.getElementById("depTime");
   const dtgInput = document.getElementById("dtg");
   const speedInput = document.getElementById("speed");
+  const dtgPositiveHint = document.getElementById("dtgPositiveHint");
+  const speedPositiveHint = document.getElementById("speedPositiveHint");
+  // min="0" alone (see the input[type="number"]:invalid CSS rule above)
+  // only ever catches a NEGATIVE value — 0 itself satisfies min="0", but a
+  // 0 distance or 0 speed is just as meaningless a voyage, so these two get
+  // their own explicit hint on top of that broad CSS catch.
+  function updatePositiveHint(inputEl, hintEl){
+    const raw = inputEl.value.trim();
+    const v = parseFloat(raw);
+    hintEl.hidden = !(raw!=="" && isFinite(v) && v<=0);
+  }
   // Speed variance / interval now live inside the ETA-across-speed-range
   // section of #resultBody (rebuilt on every render), not as static elements
   // here — see wireRangeControls(), called from renderResult().
@@ -3949,9 +3980,10 @@
   document.getElementById("nowBtn").addEventListener("click", setNow);
   depDate.addEventListener("input", () => { state.dateStr = depDate.value; saveState(); render(); });
   depTime.addEventListener("input", () => { state.timeStr = depTime.value; saveState(); render(); });
-  dtgInput.addEventListener("input", () => { state.distance = dtgInput.value; saveState(); render(); if(state.voyageMode==="leg") updateRouteLegPreviews(); });
+  dtgInput.addEventListener("input", () => { state.distance = dtgInput.value; updatePositiveHint(dtgInput, dtgPositiveHint); saveState(); render(); if(state.voyageMode==="leg") updateRouteLegPreviews(); });
   speedInput.addEventListener("input", () => {
     state.speed = speedInput.value;
+    updatePositiveHint(speedInput, speedPositiveHint);
     state.altArrivals.forEach(alt => { if(alt.speedLinked) alt.speed = state.speed; });
     saveState();
     renderAltArrivals();
@@ -5732,7 +5764,20 @@
     if(state.arr.portIndex!=null && !PORTS_ALL[state.arr.portIndex]) state.arr.portIndex = null;
     state.altArrivals = normalizeAltArrivals(state.altArrivals, state.speed);
     state.voyageMode = state.voyageMode === "leg" ? "leg" : "straight";
+    // Mirrors loadState()'s own defensive normalization — a history entry
+    // saved before the Freshwater/Fuel Planner (or even consumption.units)
+    // existed would otherwise load with those fields simply undefined,
+    // crashing the next time anything reads e.g. state.fuelPlanner.tanks.
+    const pc = state.consumption || {};
+    state.consumption = {
+      fuels: Array.isArray(pc.fuels) ? pc.fuels : defaultFuels(),
+      freshWater: Object.assign({rob:"", consPerDay:"", prodPerDay:"", unit:"m³"}, pc.freshWater||{}),
+      lubeOils: Array.isArray(pc.lubeOils) ? pc.lubeOils : defaultLubeOils(),
+      units: Object.assign({fuels:"MT", lubeOils:"L"}, pc.units||{})
+    };
     state.routeLegs = normalizeRouteLegs(state.routeLegs);
+    state.freshwaterPlanner = normalizeFreshwaterPlanner(state.freshwaterPlanner);
+    state.fuelPlanner = normalizeFuelPlanner(state.fuelPlanner);
     saveState();
     hydrateUI();
     closeHistory();
@@ -5879,6 +5924,7 @@
   /* ---------------- Hydrate UI from state (init + after loading history) ---------------- */
   function hydrateUI(){
     dtgInput.value = state.distance; speedInput.value = state.speed;
+    updatePositiveHint(dtgInput, dtgPositiveHint); updatePositiveHint(speedInput, speedPositiveHint);
     // variance/interval inputs are (re)created inside #resultBody on every
     // render — wireRangeControls() sets their value, nothing to do here.
     reqToggle.checked = state.reqEnabled; reqBody.classList.toggle("collapsed", !state.reqEnabled);
@@ -6833,9 +6879,9 @@
   function fuelTankCardHTML(t){
     const canDelete = state.fuelPlanner.tanks.length > 1;
     const unit = escHtml(fuelUnit());
-    const typeOptions = state.consumption.fuels.map(f =>
+    const typeOptions = state.consumption.fuels.length ? state.consumption.fuels.map(f =>
       '<option value="'+f.id+'"'+(f.id===t.fuelTypeId?' selected':'')+'>'+escHtml(f.name||"(unnamed)")+'</option>'
-    ).join("");
+    ).join("") : '<option value="" disabled selected>No fuel types — add one on the Consumption tab</option>';
     return '<div class="card" style="margin-bottom:10px;" data-tank-id="'+t.id+'">'+
       '<div class="field"><label>Tank name</label><input type="text" class="fuel-tank-name" placeholder="e.g. Fuel Tank 1" value="'+escHtml(t.name)+'"></div>'+
       '<div class="field" style="margin-top:10px;"><label>Fuel type</label><select class="fuel-tank-type">'+typeOptions+'</select></div>'+
@@ -7778,6 +7824,14 @@
         applyPremiumUI();
         toast("3-day free trial started!");
         showHome();
+      }).catch(() => {
+        // Unlike checkTrialStatus()/refreshPremiumStatus(), startTrial()
+        // has no cached-value fallback inside premium.js — a real mutating
+        // call, not a status read — so a network failure here (routine for
+        // this app's seafarer audience) must surface, or the officer is
+        // left staring at a button that silently reset with no idea
+        // whether the trial actually started.
+        toast("Couldn't start the trial — check your connection and try again.");
       }).finally(() => {
         btn.disabled = false;
         btn.textContent = "Start 3-Day Free Trial";
@@ -7810,6 +7864,14 @@
         errorEl.classList.add("show");
         btn.disabled = false;
       }
+    }).catch(() => {
+      // redeemVoucher() has no cached-value fallback (a real mutating call,
+      // same reasoning as startTrial() above) — without this, a network
+      // failure here left the button disabled forever, since re-enabling
+      // it only happened inside the success/handled-failure branch above.
+      errorEl.textContent = "Couldn't reach the server — check your connection and try again.";
+      errorEl.classList.add("show");
+      btn.disabled = false;
     });
   });
 
